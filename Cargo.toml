@@ -119,6 +119,7 @@ members = [
     "zk-keygen",
     "zk-token-sdk",
     "accountsdb-plugin-postgres",
+    "smt",
 ]
 
 exclude = ["programs/sbf"]

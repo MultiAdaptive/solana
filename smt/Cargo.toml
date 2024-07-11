@@ -1,0 +1,36 @@
+[package]
+name = "solana-smt"
+version = "1.18.15"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+sparse-merkle-tree = { git = "https://github.com/MultiAdaptive/sparse-merkle-tree.git", commit = "1c53fd1bb27d8649ce1f2260af6fa43f7aee7436" }
+blake2b-rs = "0.2.0"
+serde = { workspace = true }
+serde_derive = { workspace = true }
+serde_json = { workspace = true }
+openssl = { workspace = true }
+diesel = { version = "=2.1.6", features = ["postgres", "chrono"] }
+clap = { workspace = true }
+log = { workspace = true }
+thiserror = { workspace = true }
+chrono = { workspace = true, features = ["serde"] }
+crossbeam-channel = { workspace = true }
+tempfile = { workspace = true }
+bs58 = { workspace = true }
+solana-sdk = { workspace = true }
+itertools = { workspace = true }
+hex = { workspace = true }
+
+# For temporary usage.
+postgres = { version = "0.19.7", features = ["with-chrono-0_4"] }
+postgres-types = { version = "0.2.6", features = ["derive"] }
+postgres-openssl = { version = "0.5.0" }
+
+
+[dependencies.rocksdb]
+version = "0.21.0"
+default-features = false
+features = ["lz4"]
