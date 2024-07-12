@@ -35,7 +35,7 @@ impl WrapKey {
 
 #[cfg(test)]
 pub mod test {
-    use crate::fraud_proof::wrap_key::WrapKey;
+    use crate::contract::wrap_key::WrapKey;
 
     fn prepare_wrap_key() -> WrapKey {
         let slot: u64 = 20;

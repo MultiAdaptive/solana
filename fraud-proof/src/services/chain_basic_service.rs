@@ -2,7 +2,7 @@ use log::{error, info};
 use solana_client::rpc_client::RpcClient;
 use solana_sdk::pubkey::Pubkey;
 
-use crate::fraud_proof::wrap_slot::WrapSlot;
+use crate::contract::wrap_slot::WrapSlot;
 
 pub const BRIEF_PDA_SEED: &[u8] = b"fraud_proof_brief";
 pub const TALLY_PDA_SEED: &[u8] = b"fraud_proof_tally";

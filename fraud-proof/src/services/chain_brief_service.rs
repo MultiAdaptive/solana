@@ -8,8 +8,8 @@ use solana_sdk::signature::Keypair;
 use solana_sdk::signer::Signer;
 use solana_sdk::transaction::Transaction;
 
-use crate::fraud_proof::chain_brief::ChainBrief;
-use crate::fraud_proof::wrap_slot::WrapSlot;
+use crate::contract::chain_brief::ChainBrief;
+use crate::contract::wrap_slot::WrapSlot;
 use crate::services::chain_basic_service::ChainBasicService;
 
 const CREATE_BRIEF_ACCOUNT_DISCRIMINANT: [u8; 8] = [33, 225, 8, 221, 25, 134, 30, 62];

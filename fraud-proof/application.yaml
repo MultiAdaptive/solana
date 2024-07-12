@@ -6,8 +6,8 @@ store:
   schema: "solana"
 
 
-settle_chain:
+chain:
   url: "http://127.0.0.1:8899"
   fraud_proof_native_program_id: "De1JkAKuuvfrMhKKai7u53w8Ap8ufvF2QPigQMSMTyEh"
   #  keypair base58 string
-  execute_node_keypair: "451uC61fRABdasGtMYY3xGsKzeD1565zYrw5BAdhNJb1JF1qixz8hNapmgmgPKcvyzEHvzPgRdf1Zb7v4gBtSNyw"
+  execute_keypair: "451uC61fRABdasGtMYY3xGsKzeD1565zYrw5BAdhNJb1JF1qixz8hNapmgmgPKcvyzEHvzPgRdf1Zb7v4gBtSNyw"

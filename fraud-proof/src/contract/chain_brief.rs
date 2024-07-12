@@ -43,7 +43,7 @@ impl ChainBrief {
 pub mod test {
     use borsh::{BorshDeserialize, BorshSerialize};
 
-    use crate::fraud_proof::chain_brief::ChainBrief;
+    use crate::contract::chain_brief::ChainBrief;
 
     fn prepare_brief() -> ChainBrief {
         let slot: u64 = 11;

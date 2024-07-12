@@ -34,7 +34,7 @@ impl ChainTally {
 pub mod test {
     use borsh::{BorshDeserialize, BorshSerialize};
 
-    use crate::fraud_proof::chain_tally::ChainTally;
+    use crate::contract::chain_tally::ChainTally;
 
     fn prepare_tally() -> ChainTally {
         let slot: u64 = 11;

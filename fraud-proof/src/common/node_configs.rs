@@ -3,30 +3,16 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct NodeConfiguration {
-    pub settle_chain: SettleChainConfiguration,
+    pub chain: ChainConfiguration,
     pub store: StoreConfiguration,
-    pub settle_preparation: SettlePreparationConfiguration,
-    pub execute_chain: ExecuteChainConfiguration,
 }
 
-
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct ExecuteChainConfiguration {
-    pub genesis_hash: String,
-}
-
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct SettlePreparationConfiguration {
-    // keypair base58 string
-    pub execute_node_keypair: String,
-}
-
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct SettleChainConfiguration {
+pub struct ChainConfiguration {
     pub url: String,
     pub fraud_proof_native_program_id: String,
+    // keypair base58 string
+    pub execute_keypair: String,
 }
 
 
@@ -48,4 +34,12 @@ impl NodeConfiguration {
 
         config.try_deserialize::<NodeConfiguration>()
     }
+}
+
+#[test]
+fn test_null_path() {
+    let config_file="";
+    let cfg_result = &NodeConfiguration::load_from_file(config_file.clone());
+    println!("cfg_result: {:?}", cfg_result.to_owned());
+    assert!(cfg_result.is_err());
 }

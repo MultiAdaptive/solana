@@ -7,8 +7,8 @@ use solana_sdk::{
 use solana_sdk::instruction::{AccountMeta, Instruction};
 use solana_sdk::signature::Keypair;
 
-use crate::fraud_proof::chain_tally::ChainTally;
-use crate::fraud_proof::wrap_slot::WrapSlot;
+use crate::contract::chain_tally::ChainTally;
+use crate::contract::wrap_slot::WrapSlot;
 use crate::services::chain_basic_service::ChainBasicService;
 
 const INITIALIZE_DISCRIMINANT: [u8; 8] = [175, 175, 109, 31, 13, 152, 155, 237];

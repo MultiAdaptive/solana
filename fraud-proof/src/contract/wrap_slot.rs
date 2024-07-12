@@ -32,7 +32,7 @@ impl WrapSlot {
 
 #[cfg(test)]
 pub mod test {
-    use crate::fraud_proof::wrap_slot::WrapSlot;
+    use crate::contract::wrap_slot::WrapSlot;
 
     fn prepare_wrap_slot() -> WrapSlot {
         let slot: u64 = 20;

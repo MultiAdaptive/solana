@@ -22,8 +22,8 @@ use crate::entities::slot_entity::table_slot::dsl::{
     column_slot as column_s_slot, table_slot,
 };
 use crate::entities::sql_types::DbTransactionMessage;
-use crate::fraud_proof::wrap_key::WrapKey;
-use crate::fraud_proof::wrap_slot::WrapSlot;
+use crate::contract::wrap_key::WrapKey;
+use crate::contract::wrap_slot::WrapSlot;
 use crate::model::account_audit_row::AccountAuditRow;
 use crate::model::hash_record::HashRecord;
 use crate::model::ser_account::SerAccount;
