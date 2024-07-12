@@ -2576,7 +2576,18 @@ pub fn test_app<'a>(version: &'a str, default_args: &'a DefaultTestArgs) -> App<
                 .validator(is_parsable::<u64>)
                 .takes_value(true)
                 .help("Override the runtime's account lock limit per transaction")
-        );
+        ).subcommand(
+        SubCommand::with_name("fraud-proof")
+            .about("fraud proof")
+            .arg(
+                Arg::with_name("simulator_config")
+                    .long("simulator-config")
+                    .value_name("FILE")
+                    .required(true)
+                    .takes_value(true)
+                    .help("Specify the configuration file for the Simulator.")
+            )
+    );
 }
 
 pub struct DefaultTestArgs {
