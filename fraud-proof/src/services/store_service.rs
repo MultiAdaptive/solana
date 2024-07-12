@@ -26,7 +26,6 @@ use crate::entities::slot_entity::table_slot::dsl::{
 };
 use crate::entities::sql_types::DbTransactionMessage;
 use crate::contract::chain_brief::ChainBrief;
-use crate::contract::wrap_key::WrapKey;
 use crate::contract::wrap_slot::WrapSlot;
 use crate::model::account_audit_row::AccountAuditRow;
 use crate::model::hash_record::HashRecord;
