@@ -8,9 +8,9 @@ pub const TALLY_PDA_SEED: &[u8] = b"fraud_proof_tally";
 pub const STATE_PDA_SEED: &[u8] = b"fraud_proof_state";
 
 
-pub struct ChainBasicService<'a> {}
+pub struct ChainBasicService {}
 
-impl ChainBasicService<'_> {
+impl ChainBasicService {
     pub fn find_state_account_address(program_id: &Pubkey) -> (Pubkey, u8) {
         return Pubkey::find_program_address(&[STATE_PDA_SEED], program_id);
     }

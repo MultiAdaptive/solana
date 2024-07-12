@@ -123,7 +123,6 @@ impl Simulator {
             payer: &execute_node,
         };
 
-
         is_success = self.create_state_account();
         if !is_success {
             error!("create state account fail.");
@@ -131,7 +130,7 @@ impl Simulator {
         } else {
             info!("create state account success.");
         }
-        
+
         let is_tally_exist = chain_tally_service.is_tally_account_exist();
         if !is_tally_exist {
             info!("tally account is not exist.");
@@ -222,7 +221,7 @@ impl Simulator {
     }
 
 
-    fn create_state_account(&mut self) -> bool {
+    fn create_state_account(&self) -> bool {
         let mut is_success: bool = true;
         let rpc_client = self.chain_client.as_ref().unwrap();
 
