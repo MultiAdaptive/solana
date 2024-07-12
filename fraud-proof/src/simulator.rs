@@ -111,12 +111,6 @@ impl Simulator {
 
         let execute_node = self.get_role(&self.chain_config.clone().unwrap().execute_keypair).unwrap();
 
-        let chain_state_service = ChainStateService {
-            rpc_client: rpc_client,
-            program_id: fraud_proof_native_program_id,
-            payer: &execute_node,
-        };
-
         let chain_brief_service = ChainBriefService {
             rpc_client: rpc_client,
             program_id: fraud_proof_native_program_id,
@@ -129,20 +123,15 @@ impl Simulator {
             payer: &execute_node,
         };
 
-        let is_state_exist = chain_state_service.is_state_account_exist();
-        if !is_state_exist {
-            info!("state account is not exist.");
-            is_success = chain_state_service.initialize();
-            if !is_success {
-                error!("initialize fail.");
-                return is_success.clone();
-            } else {
-                info!("initialize success.");
-            }
-        } else {
-            info!("state account is already exist.");
-        }
 
+        is_success = self.create_state_account();
+        if !is_success {
+            error!("create state account fail.");
+            return is_success.clone();
+        } else {
+            info!("create state account success.");
+        }
+        
         let is_tally_exist = chain_tally_service.is_tally_account_exist();
         if !is_tally_exist {
             info!("tally account is not exist.");
@@ -343,24 +332,8 @@ impl Simulator {
     }
 
     pub fn get_role(&self, keypair: &str) -> Option<Keypair> {
-        let mut is_success: bool = true;
-        let rpc_client = self.chain_client.as_ref().unwrap();
-
         let role = Keypair::from_base58_string(keypair);
-        let chain_basic_service = ChainBasicService {
-            rpc_client: rpc_client,
-        };
-
-        is_success = chain_basic_service.request_airdrop(&role.pubkey().clone(), 10_000_000_000);
-        if is_success {
-            info!("request airdrop success. role pubkey: {:?}; role keypair: {:?}",
-                role.pubkey().to_string(), role.to_base58_string());
-            return Some(role);
-        } else {
-            error!("request airdrop fail. role pubkey: {:?}; role keypair: {:?}",
-                role.pubkey().to_string(), role.to_base58_string());
-            return None;
-        }
+        return Some(role);
     }
 }
 
