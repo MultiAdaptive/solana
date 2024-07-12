@@ -31,12 +31,7 @@ pub struct Simulator {
     store_client_one: Option<Client>,
     chain_client: Option<RpcClient>,
     store_config: Option<StoreConfiguration>,
-    // settle_chain_config: Option<SettleChainConfiguration>,
-    // execute_chain_config: Option<ExecuteChainConfiguration>,
-    // settle_preparation_config: Option<SettlePreparationConfiguration>,
-    // node_act: Option<NodeAct>,
-    current_slot: Option<u64>,
-    current_tx_no: Option<u32>,
+    chain_config: Option<ChainConfiguration>,
 }
 
 
@@ -47,37 +42,21 @@ impl Simulator {
             store_client_one: None,
             chain_client: None,
             store_config: None,
-            // settle_chain_config: None,
-            // execute_chain_config: None,
-            // settle_preparation_config: None,
-            // node_act: None,
-            current_slot: None,
-            current_tx_no: None,
+            chain_config: None,
         }
     }
 
     pub fn config(mut self, config_file: String) -> Self {
-        let cfg_result = &NodeConfiguration::load_from_file(config_file.clone().as_str());
-        info!("cfg_result: {:?}", cfg_result.to_owned());
+        let cfg_result = NodeConfiguration::load_from_file(config_file.clone().as_str());
+        info!("cfg_result: {:?}", cfg_result);
+        if cfg_result.is_ok(){
+            let cfg = cfg_result.unwrap();
+            self.store_config = Some(cfg.store.clone());
+            self.chain_config = Some(cfg.chain.clone());
+        }
 
         self
     }
-
-    // pub fn chain(mut self, settle_chain_config: &SettleChainConfiguration) -> Self {
-    //     self.settle_chain_config = Some(settle_chain_config.clone());
-    //     self
-    // }
-    //
-    // pub fn genesis(mut self, execute_chain_config: &ExecuteChainConfiguration) -> Self {
-    //     self.execute_chain_config = Some(execute_chain_config.clone());
-    //     self
-    // }
-
-    // pub fn preparation(mut self, settle_preparation_config: &SettlePreparationConfiguration) -> Self {
-    //     self.settle_preparation_config = Some(settle_preparation_config.clone());
-    //     self
-    // }
-
 
 
     // pub fn start_execute_node(&mut self) {

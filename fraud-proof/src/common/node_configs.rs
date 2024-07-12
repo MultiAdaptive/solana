@@ -39,7 +39,7 @@ impl NodeConfiguration {
 #[test]
 fn test_null_path() {
     let config_file="";
-    let cfg_result = &NodeConfiguration::load_from_file(config_file.clone());
-    println!("cfg_result: {:?}", cfg_result.to_owned());
+    let cfg_result = NodeConfiguration::load_from_file(config_file.clone());
+    println!("cfg_result: {:?}", cfg_result);
     assert!(cfg_result.is_err());
 }
