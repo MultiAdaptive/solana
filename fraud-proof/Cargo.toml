@@ -1,0 +1,71 @@
+[package]
+name = "solana-fraud-proof"
+version = "1.18.15"
+authors = ["lansheng228"]
+edition = "2021"
+description = "Send shared records to L1 solana smart contract"
+license = "Apache-2.0"
+homepage = "https://github.com/MultiAdaptive"
+documentation = ""
+
+
+[dependencies]
+solana-client = { workspace = true }
+solana-cli-config = { workspace = true }
+solana-clap-utils = { workspace = true }
+solana-sdk = { workspace = true }
+borsh = { workspace = true }
+config = { version ="0.14.0"}
+bs58 = { workspace = true }
+bytemuck = { workspace = true }
+chrono = { workspace = true, features = ["serde"] }
+crossbeam-channel = { workspace = true }
+log = { workspace = true }
+env_logger = { workspace = true }
+lazy_static = { workspace = true }
+argon2 = { version ="0.5.3"}
+dotenv = { version ="0.15.0"}
+uuid = { version = "1.9.1", features = ["v4"] }
+serde = { workspace = true }
+serde_derive = { workspace = true }
+serde_json = { workspace = true }
+serde_yaml = { workspace = true }
+serde_with = { workspace = true }
+r2d2 = { version ="0.8.10"}
+diesel = { version = "=2.1.6", features = ["postgres", "r2d2", "chrono"] }
+diesel-derive-enum = { version = "2.1.0", features = ["postgres"] }
+lombok = { version ="0.4.0"}
+schemars = { version ="0.8.21"}
+symlink = { workspace = true }
+regex = { workspace = true }
+clap = { workspace = true }
+hex = { workspace = true }
+blake2b-rs = { version = "0.2.0" }
+bincode = { workspace = true }
+byteorder = { workspace = true }
+shank = { version ="0.4.2" }
+thiserror = { workspace = true }
+num-derive = { workspace = true }
+num-traits = { workspace = true }
+rand = { workspace = true }
+getrandom = { workspace = true, features = ["custom"] }
+libc = { workspace = true }
+signal-hook = { workspace = true }
+tempfile = { workspace = true }
+itertools = { workspace = true }
+postgres = { version = "0.19.7", features = ["with-chrono-0_4"] }
+postgres-types = { version = "0.2.6", features = ["derive"] }
+sparse-merkle-tree = { git = "https://github.com/MultiAdaptive/sparse-merkle-tree.git", branch = "main", commit = "1c53fd1bb27d8649ce1f2260af6fa43f7aee7436" }
+verify-smt = { git = "https://github.com/MultiAdaptive/verify-smt.git", branch = "main", commit = "c0bd009399e5b2dc6cae0e9a3a4500515dc87588" }
+crossbeam = { version ="0.8.4"}
+async-std = { version ="1.12.0"}
+futures = { workspace = true }
+
+
+[dev-dependencies]
+assert_cmd = { workspace = true }
+assert_matches = { workspace = true }
+
+
+
+

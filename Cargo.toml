@@ -120,6 +120,7 @@ members = [
     "zk-token-sdk",
     "accountsdb-plugin-postgres",
     "smt",
+    "fraud-proof",
 ]
 
 exclude = ["programs/sbf"]
