@@ -2,8 +2,8 @@ use {
     crate::{
         accounts_update_notifier::AccountsUpdateNotifierImpl,
         block_metadata_notifier::BlockMetadataNotifierImpl,
-        block_metadata_notifier_interface::BlockMetadataNotifierArc,
         entry_notifier::EntryNotifierImpl,
+        block_metadata_notifier_interface::BlockMetadataNotifierLock,
         geyser_plugin_manager::{GeyserPluginManager, GeyserPluginManagerRequest},
         slot_status_notifier::SlotStatusNotifierImpl,
         slot_status_observer::SlotStatusObserver,
@@ -12,12 +12,14 @@ use {
     crossbeam_channel::Receiver,
     log::*,
     solana_accounts_db::accounts_update_notifier_interface::AccountsUpdateNotifier,
-    solana_ledger::entry_notifier_interface::EntryNotifierArc,
+    crate::entry_notifier_interface::EntryNotifierLock,
     solana_rpc::{
         optimistically_confirmed_bank_tracker::SlotNotification,
-        transaction_notifier_interface::TransactionNotifierArc,
+        transaction_notifier_interface::TransactionNotifierLock,
     },
     std::{
+        fs::File,
+        io::Read,
         path::{Path, PathBuf},
         sync::{
             atomic::{AtomicBool, Ordering},
@@ -29,14 +31,35 @@ use {
     thiserror::Error,
 };
 
+#[derive(Error, Debug)]
+pub enum GeyserPluginServiceError {
+    #[error("Cannot open the the plugin config file")]
+    CannotOpenConfigFile(String),
+
+    #[error("Cannot read the the plugin config file")]
+    CannotReadConfigFile(String),
+
+    #[error("The config file is not in a valid Json format")]
+    InvalidConfigFileFormat(String),
+
+    #[error("Plugin library path is not specified in the config file")]
+    LibPathNotSet,
+
+    #[error("Invalid plugin path")]
+    InvalidPluginPath,
+
+    #[error("Cannot load plugin shared library")]
+    PluginLoadError(String),
+}
+
 /// The service managing the Geyser plugin workflow.
 pub struct GeyserPluginService {
     slot_status_observer: Option<SlotStatusObserver>,
     plugin_manager: Arc<RwLock<GeyserPluginManager>>,
     accounts_update_notifier: Option<AccountsUpdateNotifier>,
-    transaction_notifier: Option<TransactionNotifierArc>,
-    entry_notifier: Option<EntryNotifierArc>,
-    block_metadata_notifier: Option<BlockMetadataNotifierArc>,
+    transaction_notifier: Option<TransactionNotifierLock>,
+    entry_notifier: Option<EntryNotifierLock>,
+    block_metadata_notifier: Option<BlockMetadataNotifierLock>,
 }
 
 impl GeyserPluginService {
@@ -81,35 +104,36 @@ impl GeyserPluginService {
             plugin_manager.account_data_notifications_enabled();
         let transaction_notifications_enabled = plugin_manager.transaction_notifications_enabled();
         let entry_notifications_enabled = plugin_manager.entry_notifications_enabled();
+
         let plugin_manager = Arc::new(RwLock::new(plugin_manager));
 
         let accounts_update_notifier: Option<AccountsUpdateNotifier> =
             if account_data_notifications_enabled {
                 let accounts_update_notifier =
                     AccountsUpdateNotifierImpl::new(plugin_manager.clone());
-                Some(Arc::new(accounts_update_notifier))
+                Some(Arc::new(RwLock::new(accounts_update_notifier)))
             } else {
                 None
             };
 
-        let transaction_notifier: Option<TransactionNotifierArc> =
+        let transaction_notifier: Option<TransactionNotifierLock> =
             if transaction_notifications_enabled {
                 let transaction_notifier = TransactionNotifierImpl::new(plugin_manager.clone());
-                Some(Arc::new(transaction_notifier))
+                Some(Arc::new(RwLock::new(transaction_notifier)))
             } else {
                 None
             };
 
-        let entry_notifier: Option<EntryNotifierArc> = if entry_notifications_enabled {
+        let entry_notifier: Option<EntryNotifierLock> = if entry_notifications_enabled {
             let entry_notifier = EntryNotifierImpl::new(plugin_manager.clone());
-            Some(Arc::new(entry_notifier))
+            Some(Arc::new(RwLock::new(entry_notifier)))
         } else {
             None
         };
 
         let (slot_status_observer, block_metadata_notifier): (
             Option<SlotStatusObserver>,
-            Option<BlockMetadataNotifierArc>,
+            Option<BlockMetadataNotifierLock>,
         ) = if account_data_notifications_enabled
             || transaction_notifications_enabled
             || entry_notifications_enabled
@@ -121,9 +145,9 @@ impl GeyserPluginService {
                     confirmed_bank_receiver,
                     slot_status_notifier,
                 )),
-                Some(Arc::new(BlockMetadataNotifierImpl::new(
+                Some(Arc::new(RwLock::new(BlockMetadataNotifierImpl::new(
                     plugin_manager.clone(),
-                ))),
+                )))),
             )
         } else {
             (None, None)
@@ -134,7 +158,6 @@ impl GeyserPluginService {
             let plugin_manager = plugin_manager.clone();
             Self::start_manager_rpc_handler(plugin_manager, request_receiver, exit)
         };
-
         info!("Started GeyserPluginService");
         Ok(GeyserPluginService {
             slot_status_observer,
@@ -160,18 +183,18 @@ impl GeyserPluginService {
         self.accounts_update_notifier.clone()
     }
 
-    pub fn get_transaction_notifier(&self) -> Option<TransactionNotifierArc> {
+    pub fn get_transaction_notifier(&self) -> Option<TransactionNotifierLock> {
         self.transaction_notifier.clone()
     }
 
-    pub fn get_entry_notifier(&self) -> Option<EntryNotifierArc> {
+    pub fn get_entry_notifier(&self) -> Option<EntryNotifierLock> {
         self.entry_notifier.clone()
     }
 
-    pub fn get_block_metadata_notifier(&self) -> Option<BlockMetadataNotifierArc> {
+    pub fn get_block_metadata_notifier(&self) -> Option<BlockMetadataNotifierLock> {
         self.block_metadata_notifier.clone()
     }
-
+    
     pub fn join(self) -> thread::Result<()> {
         if let Some(mut slot_status_observer) = self.slot_status_observer {
             slot_status_observer.join()?;

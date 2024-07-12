@@ -11,11 +11,16 @@ use {
     },
     solana_measure::measure::Measure,
     solana_metrics::*,
+    solana_runtime::{
+        accounts_update_notifier_interface::AccountsUpdateNotifierInterface,
+        append_vec::{StoredAccountMeta, StoredMeta},
+    },
     solana_sdk::{
         account::{AccountSharedData, ReadableAccount},
         clock::Slot,
         pubkey::Pubkey,
         transaction::SanitizedTransaction,
+        signature::Signature,
     },
     std::sync::{Arc, RwLock},
 };
@@ -68,12 +73,12 @@ impl AccountsUpdateNotifierInterface for AccountsUpdateNotifierImpl {
     }
 
     fn notify_end_of_restore_from_snapshot(&self) {
-        let plugin_manager = self.plugin_manager.read().unwrap();
+        let mut plugin_manager = self.plugin_manager.write().unwrap();
         if plugin_manager.plugins.is_empty() {
             return;
         }
 
-        for plugin in plugin_manager.plugins.iter() {
+        for plugin in plugin_manager.plugins.iter_mut() {
             let mut measure = Measure::start("geyser-plugin-end-of-restore-from-snapshot");
             match plugin.notify_end_of_startup() {
                 Err(err) => {
@@ -146,12 +151,12 @@ impl AccountsUpdateNotifierImpl {
         is_startup: bool,
     ) {
         let mut measure2 = Measure::start("geyser-plugin-notify_plugins_of_account_update");
-        let plugin_manager = self.plugin_manager.read().unwrap();
+        let mut plugin_manager = self.plugin_manager.write().unwrap();
 
         if plugin_manager.plugins.is_empty() {
             return;
         }
-        for plugin in plugin_manager.plugins.iter() {
+        for plugin in plugin_manager.plugins.iter_mut() {
             let mut measure = Measure::start("geyser-plugin-update-account");
             match plugin.update_account(
                 ReplicaAccountInfoVersions::V0_0_3(&account),

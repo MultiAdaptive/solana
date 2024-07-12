@@ -1,13 +1,15 @@
+/// Managing the Geyser plugins
 use {
     jsonrpc_core::{ErrorCode, Result as JsonRpcResult},
     jsonrpc_server_utils::tokio::sync::oneshot::Sender as OneShotSender,
-    libloading::Library,
+    libloading::{Library, Symbol},
     log::*,
     solana_geyser_plugin_interface::geyser_plugin_interface::GeyserPlugin,
     std::{
         ops::{Deref, DerefMut},
         path::Path,
     },
+    std::error::Error,
 };
 
 #[derive(Debug)]
