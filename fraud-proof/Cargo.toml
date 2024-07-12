@@ -1,12 +1,13 @@
 [package]
 name = "solana-fraud-proof"
-version = "1.18.15"
-authors = ["lansheng228"]
-edition = "2021"
 description = "Send shared records to L1 solana smart contract"
-license = "Apache-2.0"
-homepage = "https://github.com/MultiAdaptive"
 documentation = ""
+version = { workspace = true }
+authors = { workspace = true }
+repository = { workspace = true }
+homepage = { workspace = true }
+license = { workspace = true }
+edition = { workspace = true }
 
 
 [dependencies]

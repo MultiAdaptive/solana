@@ -2,13 +2,15 @@
 use {
     crate::{
         accounts_selector::AccountsSelector,
-        postgres_client::{ParallelPostgresClient, PostgresClientBuilder},
+        entry_selector::EntrySelector,
+        postgres_client::{ParallelPostgresClient, PostgresClientBuilder, SequencePostgresClient},
         transaction_selector::TransactionSelector,
     },
     bs58,
     log::*,
     serde_derive::{Deserialize, Serialize},
     serde_json,
+    solana_entry::entry::UntrustedEntry,
     solana_geyser_plugin_interface::geyser_plugin_interface::{
         GeyserPlugin, GeyserPluginError, ReplicaAccountInfoVersions, ReplicaBlockInfoVersions,
         ReplicaTransactionInfoVersions, Result, SlotStatus,
@@ -22,9 +24,13 @@ use {
 #[derive(Default)]
 pub struct GeyserPluginPostgres {
     client: Option<ParallelPostgresClient>,
+    sequence_client: Option<SequencePostgresClient>,
+    // only worker thread
     accounts_selector: Option<AccountsSelector>,
     transaction_selector: Option<TransactionSelector>,
+    entry_selector: Option<EntrySelector>,
     batch_starting_slot: Option<u64>,
+    entry_starting_slot: Option<u64>,
 }
 
 impl std::fmt::Debug for GeyserPluginPostgres {
@@ -42,8 +48,10 @@ pub struct GeyserPluginPostgresConfig {
     /// The user name of the PostgreSQL server.
     pub user: Option<String>,
 
+    /// The password of the PostgreSQL server.
     pub password: Option<String>,
 
+    /// The database name of the PostgreSQL server.
     pub dbname: Option<String>,
 
     /// The port number of the PostgreSQL database, the default is 5432
@@ -186,6 +194,7 @@ impl GeyserPlugin for GeyserPluginPostgres {
         let result: serde_json::Value = serde_json::from_str(&contents).unwrap();
         self.accounts_selector = Some(Self::create_accounts_selector_from_config(&result));
         self.transaction_selector = Some(Self::create_transaction_selector_from_config(&result));
+        self.entry_selector = Some(Self::create_entry_selector_from_config(&result));
 
         let config: GeyserPluginPostgresConfig =
             serde_json::from_str(&contents).map_err(|err| {
@@ -197,10 +206,14 @@ impl GeyserPlugin for GeyserPluginPostgres {
                 }
             })?;
 
-        let (client, batch_optimize_by_skiping_older_slots) =
+        let (client, batch_optimize_by_skiping_older_slots, entry_starting_slot) =
             PostgresClientBuilder::build_pararallel_postgres_client(&config)?;
         self.client = Some(client);
         self.batch_starting_slot = batch_optimize_by_skiping_older_slots;
+        self.entry_starting_slot = entry_starting_slot;
+
+        let sequence_client = PostgresClientBuilder::build_sequence_postgres_client(&config)?;
+        self.sequence_client = Some(sequence_client);
 
         Ok(())
     }
@@ -214,10 +227,17 @@ impl GeyserPlugin for GeyserPluginPostgres {
                 client.join().unwrap();
             }
         }
+
+        match &mut self.sequence_client {
+            None => {}
+            Some(client) => {
+                client.join().unwrap();
+            }
+        }
     }
 
     fn update_account(
-        &self,
+        &mut self,
         account: ReplicaAccountInfoVersions,
         slot: u64,
         is_startup: bool,
@@ -271,7 +291,8 @@ impl GeyserPlugin for GeyserPluginPostgres {
                     self.accounts_selector.as_ref().unwrap()
                 );
 
-                match &self.client {
+                // match parallel client
+                match &mut self.client {
                     None => {
                         return Err(GeyserPluginError::Custom(Box::new(
                             GeyserPluginPostgresError::DataStoreConnectionError {
@@ -300,6 +321,26 @@ impl GeyserPlugin for GeyserPluginPostgres {
                         }
                     }
                 }
+
+                // match Sequence Client
+                match &mut self.sequence_client {
+                    None => {
+                        return Err(GeyserPluginError::Custom(Box::new(
+                            GeyserPluginPostgresError::DataStoreConnectionError {
+                                msg: "There is no connection to the PostgreSQL database."
+                                    .to_string(),
+                            },
+                        )));
+                    }
+                    Some(client) => {
+                        let result = { client.update_account(account, slot, is_startup) };
+                        if let Err(err) = result {
+                            return Err(GeyserPluginError::AccountsUpdateError {
+                                msg: format!("Failed to persist the update of account to the PostgreSQL database. Error: {:?}", err)
+                            });
+                        }
+                    }
+                }
             }
         }
 
@@ -315,10 +356,10 @@ impl GeyserPlugin for GeyserPluginPostgres {
         Ok(())
     }
 
-    fn update_slot_status(&self, slot: u64, parent: Option<u64>, status: SlotStatus) -> Result<()> {
+    fn update_slot_status(&mut self, slot: u64, parent: Option<u64>, status: SlotStatus) -> Result<()> {
         info!("Updating slot {:?} at with status {:?}", slot, status);
 
-        match &self.client {
+        match &mut self.client {
             None => {
                 return Err(GeyserPluginError::Custom(Box::new(
                     GeyserPluginPostgresError::DataStoreConnectionError {
@@ -340,9 +381,9 @@ impl GeyserPlugin for GeyserPluginPostgres {
         Ok(())
     }
 
-    fn notify_end_of_startup(&self) -> Result<()> {
+    fn notify_end_of_startup(&mut self) -> Result<()> {
         info!("Notifying the end of startup for accounts notifications");
-        match &self.client {
+        match &mut self.client {
             None => {
                 return Err(GeyserPluginError::Custom(Box::new(
                     GeyserPluginPostgresError::DataStoreConnectionError {
@@ -364,11 +405,11 @@ impl GeyserPlugin for GeyserPluginPostgres {
     }
 
     fn notify_transaction(
-        &self,
+        &mut self,
         transaction_info: ReplicaTransactionInfoVersions,
         slot: u64,
     ) -> Result<()> {
-        match &self.client {
+        match &mut self.client {
             None => {
                 return Err(GeyserPluginError::Custom(Box::new(
                     GeyserPluginPostgresError::DataStoreConnectionError {
@@ -408,8 +449,8 @@ impl GeyserPlugin for GeyserPluginPostgres {
         Ok(())
     }
 
-    fn notify_block_metadata(&self, block_info: ReplicaBlockInfoVersions) -> Result<()> {
-        match &self.client {
+    fn notify_block_metadata(&mut self, block_info: ReplicaBlockInfoVersions) -> Result<()> {
+        match &mut self.client {
             None => {
                 return Err(GeyserPluginError::Custom(Box::new(
                     GeyserPluginPostgresError::DataStoreConnectionError {
@@ -443,6 +484,31 @@ impl GeyserPlugin for GeyserPluginPostgres {
         Ok(())
     }
 
+    fn notify_entry(&mut self, entry: &UntrustedEntry) -> Result<()> {
+        match &mut self.client {
+            None => {
+                return Err(GeyserPluginError::Custom(Box::new(
+                    GeyserPluginPostgresError::DataStoreConnectionError {
+                        msg: "There is no connection to the PostgreSQL database.".to_string(),
+                    },
+                )));
+            }
+            Some(client) => {
+                let result = client.log_entry(entry);
+                if let Err(err) = result {
+                    return Err(GeyserPluginError::EntryUpdateError {
+                        msg: format!(
+                            "Failed to persist entry to the PostgreSQL database. Error: {:?}",
+                            err
+                        ),
+                    });
+                }
+            }
+        }
+
+        Ok(())
+    }
+
     /// Check if the plugin is interested in account data
     /// Default is true -- if the plugin is not interested in
     /// account data, please return false.
@@ -457,6 +523,17 @@ impl GeyserPlugin for GeyserPluginPostgres {
         self.transaction_selector
             .as_ref()
             .map_or_else(|| false, |selector| selector.is_enabled())
+    }
+
+    /// Check if the plugin is interested in shred data
+    fn entry_notifications_enabled(&self) -> bool {
+        self.entry_selector
+            .as_ref()
+            .map_or_else(|| false, |selector| selector.is_enabled())
+    }
+
+    fn last_insert_entry(&self) -> u64 {
+        self.entry_starting_slot.unwrap()
     }
 }
 
@@ -514,6 +591,15 @@ impl GeyserPluginPostgres {
         }
     }
 
+    fn create_entry_selector_from_config(config: &serde_json::Value) -> EntrySelector {
+        let entry_selector = &config["entry_selector"];
+        if entry_selector.is_null() {
+            EntrySelector::default()
+        } else {
+            EntrySelector::new(true)
+        }
+    }
+
     pub fn new() -> Self {
         Self::default()
     }
@@ -530,6 +616,8 @@ pub unsafe extern "C" fn _create_plugin() -> *mut dyn GeyserPlugin {
     Box::into_raw(plugin)
 }
 
+
+
 #[cfg(test)]
 pub(crate) mod tests {
     use {super::*, serde_json};
@@ -542,5 +630,14 @@ pub(crate) mod tests {
 
         let config: serde_json::Value = serde_json::from_str(config).unwrap();
         GeyserPluginPostgres::create_accounts_selector_from_config(&config);
+    }
+
+    #[test]
+    fn test_entry_selector_from_config() {
+        let config = "{\"entry_selector\" : true}}";
+
+        let config: serde_json::Value = serde_json::from_str(config).unwrap();
+        let entry_selector = GeyserPluginPostgres::create_entry_selector_from_config(&config);
+        assert_eq!(true, entry_selector.is_enabled());
     }
 }
