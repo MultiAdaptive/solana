@@ -7666,6 +7666,7 @@ dependencies = [
  "base64 0.21.7",
  "bincode",
  "bs58",
+ "clap 2.34.0",
  "crossbeam-channel",
  "dashmap",
  "itertools",
