@@ -27,7 +27,8 @@ use {
     },
     solana_cost_model::cost_model::CostModel,
     solana_entry::entry::{
-        self, create_ticks, Entry, EntrySlice, EntryType, EntryVerificationStatus, VerifyRecyclers,
+        self, create_ticks, Entry, EntrySender, EntrySlice, EntryType, EntryVerificationStatus,
+                UntrustedEntry, VerifyRecyclers,
     },
     solana_measure::{measure, measure::Measure},
     solana_metrics::datapoint_error,
