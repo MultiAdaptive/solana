@@ -3,7 +3,7 @@ use {
     crate::geyser_plugin_manager::GeyserPluginManager,
     log::*,
     solana_accounts_db::{
-        account_storage::meta::StoredAccountMeta,
+        account_storage::meta::{StoredAccountMeta,StoredMeta},
         accounts_update_notifier_interface::AccountsUpdateNotifierInterface,
     },
     solana_geyser_plugin_interface::geyser_plugin_interface::{
@@ -11,10 +11,6 @@ use {
     },
     solana_measure::measure::Measure,
     solana_metrics::*,
-    solana_runtime::{
-        accounts_update_notifier_interface::AccountsUpdateNotifierInterface,
-        append_vec::{StoredAccountMeta, StoredMeta},
-    },
     solana_sdk::{
         account::{AccountSharedData, ReadableAccount},
         clock::Slot,

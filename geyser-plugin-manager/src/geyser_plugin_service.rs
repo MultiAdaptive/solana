@@ -31,26 +31,7 @@ use {
     thiserror::Error,
 };
 
-#[derive(Error, Debug)]
-pub enum GeyserPluginServiceError {
-    #[error("Cannot open the the plugin config file")]
-    CannotOpenConfigFile(String),
 
-    #[error("Cannot read the the plugin config file")]
-    CannotReadConfigFile(String),
-
-    #[error("The config file is not in a valid Json format")]
-    InvalidConfigFileFormat(String),
-
-    #[error("Plugin library path is not specified in the config file")]
-    LibPathNotSet,
-
-    #[error("Invalid plugin path")]
-    InvalidPluginPath,
-
-    #[error("Cannot load plugin shared library")]
-    PluginLoadError(String),
-}
 
 /// The service managing the Geyser plugin workflow.
 pub struct GeyserPluginService {
@@ -269,4 +250,22 @@ impl GeyserPluginService {
 pub enum GeyserPluginServiceError {
     #[error("Failed to load a geyser plugin")]
     FailedToLoadPlugin(#[from] Box<dyn std::error::Error>),
+
+    #[error("Cannot open the the plugin config file")]
+    CannotOpenConfigFile(String),
+
+    #[error("Cannot read the the plugin config file")]
+    CannotReadConfigFile(String),
+
+    #[error("The config file is not in a valid Json format")]
+    InvalidConfigFileFormat(String),
+
+    #[error("Plugin library path is not specified in the config file")]
+    LibPathNotSet,
+
+    #[error("Invalid plugin path")]
+    InvalidPluginPath,
+
+    #[error("Cannot load plugin shared library")]
+    PluginLoadError(String),
 }
