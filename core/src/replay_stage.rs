@@ -1,5 +1,5 @@
 //! The `replay_stage` replays transactions broadcast by the leader.
-
+use solana_geyser_plugin_manager::entry_notifier_interface::EntryNotifierLock;
 use {
     crate::{
         banking_trace::BankingTracer,
@@ -35,7 +35,7 @@ use {
     crossbeam_channel::{Receiver, RecvTimeoutError, Sender},
     lazy_static::lazy_static,
     rayon::{prelude::*, ThreadPool},
-    solana_entry::entry::VerifyRecyclers,
+    solana_entry::entry::{UntrustedEntry, VerifyRecyclers},
     solana_geyser_plugin_manager::block_metadata_notifier_interface::BlockMetadataNotifierArc,
     solana_gossip::cluster_info::ClusterInfo,
     solana_ledger::{
@@ -101,6 +101,7 @@ const MAX_VOTE_REFRESH_INTERVAL_MILLIS: usize = 5000;
 // to be able to replay all active forks at the same time in most cases.
 const MAX_CONCURRENT_FORKS_TO_REPLAY: usize = 4;
 const MAX_REPAIR_RETRY_LOOP_ATTEMPTS: usize = 10;
+static mut LAST_NOTIFIED_FULL_SLOT: u64 = 0;
 
 lazy_static! {
     static ref PAR_THREAD_POOL: ThreadPool = rayon::ThreadPoolBuilder::new()
@@ -524,12 +525,13 @@ impl ReplayStage {
         cost_update_sender: Sender<CostUpdate>,
         voting_sender: Sender<VoteOp>,
         drop_bank_sender: Sender<Vec<Arc<Bank>>>,
-        block_metadata_notifier: Option<BlockMetadataNotifierArc>,
+        block_metadata_notifier: Option<BlockMetadataNotifierLock>,
         log_messages_bytes_limit: Option<usize>,
         prioritization_fee_cache: Arc<PrioritizationFeeCache>,
         dumped_slots_sender: DumpedSlotsSender,
         banking_tracer: Arc<BankingTracer>,
         popular_pruned_forks_receiver: PopularPrunedForksReceiver,
+        entry_notifier: Option<EntryNotifierLock>,
     ) -> Result<Self, String> {
         let ReplayStageConfig {
             vote_account,
@@ -678,6 +680,7 @@ impl ReplayStage {
                     replay_slots_concurrently,
                     &prioritization_fee_cache,
                     &mut purge_repair_slot_counter,
+                    entry_notifier.clone(),
                 );
                 replay_active_banks_time.stop();
 
@@ -2844,9 +2847,10 @@ impl ReplayStage {
         cost_update_sender: &Sender<CostUpdate>,
         duplicate_slots_to_repair: &mut DuplicateSlotsToRepair,
         ancestor_hashes_replay_update_sender: &AncestorHashesReplayUpdateSender,
-        block_metadata_notifier: Option<BlockMetadataNotifierArc>,
+        block_metadata_notifier: Option<BlockMetadataNotifierLock>,
         replay_result_vec: &[ReplaySlotFromBlockstore],
         purge_repair_slot_counter: &mut PurgeRepairSlotCounter,
+        entry_notifier: Option<EntryNotifierLock>,
     ) -> bool {
         // TODO: See if processing of blockstore replay results and bank completion can be made thread safe.
         let mut did_complete_bank = false;
@@ -3054,6 +3058,35 @@ impl ReplayStage {
                         r_replay_progress.num_entries as u64,
                     )
                 }
+
+                // notify entries once current bank is completed
+                if let Some(ref entry_notifier) = entry_notifier {
+                    unsafe {
+                        let entry_notifier = entry_notifier.read().unwrap();
+                        if LAST_NOTIFIED_FULL_SLOT == 0 {
+                            LAST_NOTIFIED_FULL_SLOT = entry_notifier.last_insert_entry();
+                        }
+
+                        let target_slot = LAST_NOTIFIED_FULL_SLOT + 1;
+                        // target slot exists
+                        if let Ok(Some(slot_meta)) = blockstore.meta(target_slot) {
+                            // next slot exists, meaning target slot is final.
+                            if let Ok(Some(_)) = blockstore.meta(target_slot + 1) {
+                                let load_result = blockstore.get_slot_entries_with_shred_info(target_slot, 0, false).unwrap();
+                                let untrusted_entry = UntrustedEntry {
+                                    entries: load_result.0.clone(),
+                                    slot: target_slot,
+                                    parent_slot: slot_meta.parent_slot.unwrap(),
+                                    is_full_slot: load_result.2
+                                };
+
+                                entry_notifier.notify_entry(&untrusted_entry);
+                                LAST_NOTIFIED_FULL_SLOT += 1;
+                            }
+                        }
+                    }
+                }
+
                 bank_complete_time.stop();
 
                 r_replay_stats.report_stats(
@@ -3102,12 +3135,13 @@ impl ReplayStage {
         cost_update_sender: &Sender<CostUpdate>,
         duplicate_slots_to_repair: &mut DuplicateSlotsToRepair,
         ancestor_hashes_replay_update_sender: &AncestorHashesReplayUpdateSender,
-        block_metadata_notifier: Option<BlockMetadataNotifierArc>,
+        block_metadata_notifier: Option<BlockMetadataNotifierLock>,
         replay_timing: &mut ReplayTiming,
         log_messages_bytes_limit: Option<usize>,
         replay_slots_concurrently: bool,
         prioritization_fee_cache: &PrioritizationFeeCache,
         purge_repair_slot_counter: &mut PurgeRepairSlotCounter,
+        entry_notifier: Option<EntryNotifierLock>,
     ) -> bool /* completed a bank */ {
         let active_bank_slots = bank_forks.read().unwrap().active_bank_slots();
         let num_active_banks = active_bank_slots.len();
@@ -3178,6 +3212,7 @@ impl ReplayStage {
                 block_metadata_notifier,
                 &replay_result_vec,
                 purge_repair_slot_counter,
+                entry_notifier,
             )
         } else {
             false

@@ -135,6 +135,7 @@ use {
     strum::VariantNames,
     strum_macros::{Display, EnumString, EnumVariantNames, IntoStaticStr},
     tokio::runtime::Runtime as TokioRuntime,
+    solana_geyser_plugin_manager::entry_notifier_interface::EntryNotifierLock,
 };
 
 const MAX_COMPLETED_DATA_SETS_IN_CHANNEL: usize = 100_000;
@@ -1314,6 +1315,7 @@ impl Validator {
             repair_quic_endpoint_sender,
             outstanding_repair_requests.clone(),
             cluster_slots.clone(),
+            entry_notifier.clone(),
         )?;
 
         if in_wen_restart {
