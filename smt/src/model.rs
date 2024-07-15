@@ -1,12 +1,15 @@
-use crate::account_smt::{RocksStoreSMT, SMTAccount};
-use chrono;
-use diesel::{prelude::*, Connection, ExpressionMethods, PgConnection, QueryDsl, RunQueryDsl};
-use postgres_types::{FromSql, ToSql};
-use serde_derive::{Deserialize, Serialize};
-use solana_sdk::{account::Account, pubkey::Pubkey, transaction::Transaction};
 use std::collections::HashMap;
 use std::io;
+
+use chrono;
+use diesel::{Connection, ExpressionMethods, prelude::*, QueryDsl, RunQueryDsl};
+use postgres_types::{FromSql, ToSql};
+use serde_derive::{Deserialize, Serialize};
 use thiserror::Error;
+
+use solana_sdk::{account::Account, pubkey::Pubkey, transaction::Transaction};
+
+use crate::account_smt::SMTAccount;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct PostgresConfig {
@@ -102,9 +105,9 @@ pub struct AccountAuditRow {
 impl AccountAuditRow {
     pub fn to_smt_account(&self) -> SMTAccount {
         SMTAccount {
-            pubkey: Pubkey::new(&self.pubkey),
+            pubkey: Pubkey::try_from(self.pubkey.as_slice()).unwrap(),
             lamports: self.lamports,
-            owner: Pubkey::new(&self.owner),
+            owner: Pubkey::try_from(self.owner.as_slice()).unwrap(),
             executable: self.executable,
             rent_epoch: self.rent_epoch,
             data: self.data.clone(),

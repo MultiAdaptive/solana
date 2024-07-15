@@ -1,7 +1,4 @@
-use std::str::FromStr;
 use blake2b_rs::Blake2bBuilder;
-use solana_sdk::hash::Hash;
-use solana_sdk::pubkey::Pubkey;
 use sparse_merkle_tree::{CompiledMerkleProof, H256};
 use sparse_merkle_tree::blake2b::Blake2bHasher;
 
@@ -27,8 +24,3 @@ impl MerkleVerify {
         return result;
     }
 }
-
-
-
-
-

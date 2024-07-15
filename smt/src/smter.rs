@@ -207,9 +207,9 @@ impl SMTer {
                 }
 
                 let raw_acct = SMTAccount {
-                    pubkey: Pubkey::new(&aa.pubkey),
+                    pubkey: Pubkey::try_from(aa.pubkey.as_slice()).unwrap(),
                     lamports: aa.lamports,
-                    owner: Pubkey::new(&aa.owner),
+                    owner: Pubkey::try_from(aa.owner.as_slice()).unwrap(),
                     executable: aa.executable,
                     rent_epoch: aa.rent_epoch,
                     data: aa.data.clone(),
@@ -282,17 +282,17 @@ impl SMTer {
             for r in &tx_results {
                 let msg: DbTransactionMessage = r.get(0);
                 let signatures: Vec<Vec<u8>> = r.get(1);
-                let pks: Vec<Pubkey> = msg.account_keys.iter().map(|ak| Pubkey::new(&ak)).collect();
+                let pks: Vec<Pubkey> = msg.account_keys.iter().map(|ak| Pubkey::try_from(ak.as_slice()).unwrap()).collect();
 
                 // Found all related (modified) accounts from account_audit
                 let modified_accounts: Vec<AccountAuditRow> = aas
                     .iter()
-                    .filter(|a| pks.contains(&Pubkey::new(&a.pubkey)) && a.txn_signature.is_some())
+                    .filter(|a| pks.contains(&Pubkey::try_from(a.pubkey.as_slice()).unwrap()) && a.txn_signature.is_some())
                     .cloned()
                     .collect();
 
                 ha = compute_ha(
-                    &Signature::new(&signatures[0]),
+                    &Signature::try_from(signatures[0].as_slice()).unwrap(),
                     &modified_accounts
                         .iter()
                         .map(|a| a.to_smt_account())
@@ -380,7 +380,7 @@ impl SMTer {
             // Found all related (modified) accounts from account_audit
             let modified_accounts: Vec<AccountAuditRow> = aas
                 .iter()
-                .filter(|a| pks.contains(&Pubkey::new(&a.pubkey)) && a.txn_signature.is_some())
+                .filter(|a| pks.contains(&Pubkey::try_from(a.pubkey.as_slice()).unwrap()) && a.txn_signature.is_some())
                 .cloned()
                 .collect();
 
@@ -405,7 +405,7 @@ impl SMTer {
                         pubkey: key.clone(),
                         ..Default::default()
                     }
-                    .smt_key();
+                        .smt_key();
                     smt_keys.push(smt_key);
                     let account = smt.read().unwrap().get(&smt_key).unwrap();
                     leaves.push((smt_key.clone(), account.to_h256()));
@@ -424,7 +424,7 @@ impl SMTer {
                     // So the account_audit row must have txn_signature.
                     if ma.txn_signature.is_some() {
                         post_accounts.insert(
-                            Pubkey::new(&ma.pubkey).to_string(),
+                            Pubkey::try_from(ma.pubkey.as_slice()).unwrap().to_string(),
                             (
                                 Hash::new(ma.to_smt_account().to_h256().as_slice().clone())
                                     .to_string(),
@@ -500,14 +500,14 @@ impl SMTer {
 
     fn construct_tx(msg: DbTransactionMessage, signatures: Vec<Vec<u8>>) -> Transaction {
         Transaction {
-            signatures: signatures.into_iter().map(|s| Signature::new(&s)).collect(),
+            signatures: signatures.into_iter().map(|s| Signature::try_from(s.as_slice()).unwrap()).collect(),
             message: Message {
                 header: MessageHeader {
                     num_required_signatures: msg.header.num_required_signatures as u8,
                     num_readonly_signed_accounts: msg.header.num_readonly_signed_accounts as u8,
                     num_readonly_unsigned_accounts: msg.header.num_readonly_unsigned_accounts as u8,
                 },
-                account_keys: msg.account_keys.iter().map(|ak| Pubkey::new(&ak)).collect(),
+                account_keys: msg.account_keys.iter().map(|ak| Pubkey::try_from(ak.as_slice()).unwrap()).collect(),
                 recent_blockhash: Hash::new(&msg.recent_blockhash),
                 instructions: msg
                     .instructions

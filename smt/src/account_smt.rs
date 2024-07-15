@@ -63,7 +63,7 @@ impl Value for SMTAccount {
 impl From<Vec<u8>> for SMTAccount {
     fn from(bytes: Vec<u8>) -> Self {
         let mut index = 0;
-        let pubkey = Pubkey::new(&bytes[0..PUBKEY_BYTES]);
+        let pubkey = Pubkey::try_from(&bytes[0..PUBKEY_BYTES]).unwrap();
         index = PUBKEY_BYTES;
 
         let lamports_bytes: [u8; 8] =
@@ -76,7 +76,7 @@ impl From<Vec<u8>> for SMTAccount {
         let lamports = i64::from_le_bytes(lamports_bytes);
         index += 8;
 
-        let owner = Pubkey::new(&bytes[index..index + PUBKEY_BYTES]);
+        let owner = Pubkey::try_from(&bytes[index..index + PUBKEY_BYTES]).unwrap();
         index += PUBKEY_BYTES;
 
         let executable = bytes[index] != 0;
