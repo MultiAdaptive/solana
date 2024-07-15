@@ -1544,10 +1544,6 @@ impl SequencePostgresClientWorker {
                             if let Err(_err) = smt.write().unwrap().update(key_hash, raw_acct) {
                                 info!("update_merkle_tree_key_value err");
                             }
-
-                            // if let Ok(v) = smt.read().unwrap().get(&key_hash) {
-                            //     assert_eq!(raw_acct, v);
-                            // }
                         }
                     }
                     _ => (),

@@ -196,7 +196,7 @@ psql -U solana -p 5433 -h 10.138.0.9 -w -d solana
 Use the scripts/create_schema.sql
 
 ```
-psql -U solana -p 5433 -h 10.138.0.9 -w -d solana -f scripts/create_schema.sql
+psql -U solana  -p 5432 -h localhost -d solana2 -f scripts/create_schema.sql
 ```
 
 After this, start the validator with the plugin by using the `--geyser-plugin-config`
@@ -208,7 +208,7 @@ To destroy the database objects, created by `create_schema.sql`, use
 drop_schema.sql. For example,
 
 ```
-psql -U solana -p 5433 -h 10.138.0.9 -w -d solana -f scripts/drop_schema.sql
+psql -U solana -p 5432 -h localhost -d solana -f scripts/drop_schema.sql
 ```
 
 ### Capture Historical Account Data

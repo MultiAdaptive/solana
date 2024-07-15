@@ -25,7 +25,7 @@ use {
         native_token::sol_to_lamports,
         pubkey::Pubkey,
         rent::Rent,
-        signature::{read_keypair_file, write_keypair_file, Keypair, Signer},
+        signature::{Keypair, read_keypair_file, Signer, write_keypair_file},
         system_program,
     },
     solana_streamer::socket::SocketAddrSpace,
@@ -289,9 +289,8 @@ fn main() {
             Some(_) => value_t_or_exit!(matches, "warp_slot", Slot),
             None => {
                 cluster_rpc_client.as_ref().unwrap_or_else(|_| {
-                        println!("The --url argument must be provided if --warp-slot/-w is used without an explicit slot");
-                        exit(1);
-
+                    println!("The --url argument must be provided if --warp-slot/-w is used without an explicit slot");
+                    exit(1);
                 }).get_slot()
                     .unwrap_or_else(|err| {
                         println!("Unable to get current cluster slot: {err}");
@@ -416,7 +415,7 @@ fn main() {
                 Some(&validator_log_symlink),
                 Some(&mut genesis.validator_exit.write().unwrap()),
             )
-            .unwrap(),
+                .unwrap(),
         )
     } else {
         None
@@ -558,23 +557,23 @@ fn main() {
         genesis.compute_unit_limit(compute_unit_limit);
     }
 
-    match matches.subcommand() {
-        ("fraud-proof", Some(sub_matches)) => {
-            if let Some(param) = sub_matches.value_of("simulator_config") {
-                println!("~~~~~~~~~~~~~~~~~~~~ Subcommand with param: {}", param);
-            }
-            println!("Starting a thread to execute the subcommand...");
-            let _handle = thread::spawn(|| {
-                // 在线程中执行任务
-                for i in 1..=5 {
-                    println!("Thread is working... {}", i);
-                    thread::sleep(Duration::from_secs(1));
-                }
-            });
-        }
-
-        _ => unreachable!(),
-    }
+    // match matches.subcommand() {
+    //     ("fraud-proof", Some(sub_matches)) => {
+    //         if let Some(param) = sub_matches.value_of("simulator_config") {
+    //             println!("~~~~~~~~~~~~~~~~~~~~ Subcommand with param: {}", param);
+    //         }
+    //         println!("Starting a thread to execute the subcommand...");
+    //         let _handle = thread::spawn(|| {
+    //             // 在线程中执行任务
+    //             for i in 1..=5 {
+    //                 println!("Thread is working... {}", i);
+    //                 thread::sleep(Duration::from_secs(1));
+    //             }
+    //         });
+    //     }
+    //
+    //     _ => unreachable!(),
+    // }
 
 
     match genesis.start_with_mint_address_and_geyser_plugin_rpc(
@@ -583,9 +582,9 @@ fn main() {
         rpc_to_plugin_manager_receiver,
     ) {
         Ok(test_validator) => {
-            if let Some(dashboard) = dashboard {
-                dashboard.run(Duration::from_millis(250));
-            }
+            // if let Some(dashboard) = dashboard {
+            //     dashboard.run(Duration::from_millis(250));
+            // }
             test_validator.join();
         }
         Err(err) => {
