@@ -135,7 +135,6 @@ use {
     strum::VariantNames,
     strum_macros::{Display, EnumString, EnumVariantNames, IntoStaticStr},
     tokio::runtime::Runtime as TokioRuntime,
-    solana_geyser_plugin_manager::entry_notifier_interface::EntryNotifierLock,
 };
 
 const MAX_COMPLETED_DATA_SETS_IN_CHANNEL: usize = 100_000;
@@ -160,7 +159,7 @@ impl BlockVerificationMethod {
                 "Switch transaction scheduling method for verifying ledger entries [default: {}]",
                 BlockVerificationMethod::default()
             );
-        };
+        }
 
         &MESSAGE
     }
@@ -185,7 +184,8 @@ impl BlockProductionMethod {
                 "Switch transaction scheduling method for producing ledger entries [default: {}]",
                 BlockProductionMethod::default()
             );
-        };
+        }
+        ;
 
         &MESSAGE
     }
@@ -526,7 +526,7 @@ impl Validator {
                         geyser_plugin_config_files,
                         rpc_to_plugin_manager_receiver_and_exit,
                     )
-                    .map_err(|err| format!("Failed to load the Geyser plugin: {err:?}"))?,
+                        .map_err(|err| format!("Failed to load the Geyser plugin: {err:?}"))?,
                 )
             } else {
                 None
@@ -581,12 +581,12 @@ impl Validator {
                     wait_for_supermajority_slot + 1,
                     expected_shred_version,
                 )
-                .map_err(|err| {
-                    format!(
-                        "Failed to backup and clear shreds with incorrect \
+                    .map_err(|err| {
+                        format!(
+                            "Failed to backup and clear shreds with incorrect \
                         shred version from blockstore: {err:?}"
-                    )
-                })?;
+                        )
+                    })?;
             }
         }
 
@@ -608,7 +608,7 @@ impl Validator {
             &config.snapshot_config.bank_snapshots_dir,
             &config.account_snapshot_paths,
         )
-        .map_err(|err| format!("failed to clean orphaned account snapshot directories: {err}"))?;
+            .map_err(|err| format!("failed to clean orphaned account snapshot directories: {err}"))?;
         timer.stop();
         info!("Cleaning orphaned account snapshot directories done. {timer}");
 
@@ -709,7 +709,8 @@ impl Validator {
             &start_progress,
             accounts_update_notifier,
             transaction_notifier,
-            entry_notifier,
+            // entry_notifier,
+            None,
             Some(poh_timing_point_sender.clone()),
         )?;
         let hard_forks = bank_forks.read().unwrap().root_bank().hard_forks();
@@ -795,7 +796,7 @@ impl Validator {
         let pruned_banks_request_handler = PrunedBanksRequestHandler {
             pruned_banks_receiver,
         };
-        let last_full_snapshot_slot = starting_snapshot_hashes.map(|x| x.full.0 .0);
+        let last_full_snapshot_slot = starting_snapshot_hashes.map(|x| x.full.0.0);
         let accounts_background_service = AccountsBackgroundService::new(
             bank_forks.clone(),
             exit.clone(),
@@ -1109,7 +1110,7 @@ impl Validator {
             rpc_override_health_check,
             &start_progress,
         )
-        .map_err(|err| format!("wait_for_supermajority failed: {err:?}"))?;
+            .map_err(|err| format!("wait_for_supermajority failed: {err:?}"))?;
 
         let blockstore_metric_report_service =
             BlockstoreMetricReportService::new(blockstore.clone(), exit.clone());
@@ -1151,7 +1152,7 @@ impl Validator {
                 exit.clone(),
                 config.banking_trace_dir_byte_limit,
             )))
-            .map_err(|err| format!("{} [{:?}]", &err, &err))?;
+                .map_err(|err| format!("{} [{:?}]", &err, &err))?;
         if banking_tracer.is_enabled() {
             info!(
                 "Enabled banking trace (dir_byte_limit: {})",
@@ -1203,8 +1204,8 @@ impl Validator {
                 turbine_quic_endpoint_sender,
                 bank_forks.clone(),
             )
-            .map(|(endpoint, sender, join_handle)| (Some(endpoint), sender, Some(join_handle)))
-            .unwrap()
+                .map(|(endpoint, sender, join_handle)| (Some(endpoint), sender, Some(join_handle)))
+                .unwrap()
         };
 
         // Repair quic endpoint.
@@ -1236,8 +1237,8 @@ impl Validator {
                     repair_quic_endpoint_sender,
                     bank_forks.clone(),
                 )
-                .map(|(endpoint, sender, join_handle)| (Some(endpoint), sender, Some(join_handle)))
-                .unwrap()
+                    .map(|(endpoint, sender, join_handle)| (Some(endpoint), sender, Some(join_handle)))
+                    .unwrap()
             };
 
         let in_wen_restart = config.wen_restart_proto_path.is_some() && !waited_for_supermajority;
@@ -1864,7 +1865,7 @@ fn load_blockstore(
             accounts_update_notifier,
             exit,
         )
-        .map_err(|err| err.to_string())?;
+            .map_err(|err| err.to_string())?;
 
     // Before replay starts, set the callbacks in each of the banks in BankForks so that
     // all dropped banks come through the `pruned_banks_receiver` channel. This way all bank
@@ -1991,10 +1992,10 @@ impl<'a> ProcessBlockStore<'a> {
                 self.entry_notification_sender,
                 &self.accounts_background_request_sender,
             )
-            .map_err(|err| {
-                exit.store(true, Ordering::Relaxed);
-                format!("Failed to load ledger: {err:?}")
-            })?;
+                .map_err(|err| {
+                    exit.store(true, Ordering::Relaxed);
+                    format!("Failed to load ledger: {err:?}")
+                })?;
             exit.store(true, Ordering::Relaxed);
 
             if let Some(blockstore_root_scan) = self.blockstore_root_scan.take() {
@@ -2010,7 +2011,7 @@ impl<'a> ProcessBlockStore<'a> {
                         self.blockstore,
                         &mut self.original_blockstore_root,
                     )
-                    .map_err(|err| format!("Failed to reconcile blockstore with tower: {err:?}"))?;
+                        .map_err(|err| format!("Failed to reconcile blockstore with tower: {err:?}"))?;
                 }
 
                 post_process_restored_tower(
@@ -2033,7 +2034,7 @@ impl<'a> ProcessBlockStore<'a> {
                     self.blockstore,
                     &mut self.original_blockstore_root,
                 )
-                .map_err(|err| format!("Failed to reconcile blockstore with hard fork: {err:?}"))?;
+                    .map_err(|err| format!("Failed to reconcile blockstore with hard fork: {err:?}"))?;
             }
 
             *self.start_progress.write().unwrap() = previous_start_process;
@@ -2556,7 +2557,7 @@ mod tests {
             DEFAULT_TPU_ENABLE_UDP,
             Arc::new(RwLock::new(None)),
         )
-        .expect("assume successful validator start");
+            .expect("assume successful validator start");
         assert_eq!(
             *start_progress.read().unwrap(),
             ValidatorStartProgress::Running
@@ -2641,7 +2642,7 @@ mod tests {
                     DEFAULT_TPU_ENABLE_UDP,
                     Arc::new(RwLock::new(None)),
                 )
-                .expect("assume successful validator start")
+                    .expect("assume successful validator start")
             })
             .collect();
 
@@ -2659,7 +2660,7 @@ mod tests {
 
         let timeout = Duration::from_secs(60);
         if let Err(RecvTimeoutError::Timeout) = receiver.recv_timeout(timeout) {
-            panic!("timeout for shutting down validators",);
+            panic!("timeout for shutting down validators", );
         }
 
         for path in ledger_paths {
@@ -2692,7 +2693,7 @@ mod tests {
             rpc_override_health_check.clone(),
             &start_progress,
         )
-        .unwrap());
+            .unwrap());
 
         // bank=0, wait=1, should fail
         config.wait_for_supermajority = Some(1);
@@ -2723,7 +2724,7 @@ mod tests {
             rpc_override_health_check.clone(),
             &start_progress,
         )
-        .unwrap());
+            .unwrap());
 
         // bank=1, wait=1, equal, but bad hash provided
         config.wait_for_supermajority = Some(1);
@@ -2756,7 +2757,7 @@ mod tests {
 
         assert!(is_snapshot_config_valid(
             &new_snapshot_config(300, 200),
-            100
+            100,
         ));
 
         let default_accounts_hash_interval =
@@ -2764,62 +2765,62 @@ mod tests {
         assert!(is_snapshot_config_valid(
             &new_snapshot_config(
                 snapshot_bank_utils::DEFAULT_FULL_SNAPSHOT_ARCHIVE_INTERVAL_SLOTS,
-                snapshot_bank_utils::DEFAULT_INCREMENTAL_SNAPSHOT_ARCHIVE_INTERVAL_SLOTS
+                snapshot_bank_utils::DEFAULT_INCREMENTAL_SNAPSHOT_ARCHIVE_INTERVAL_SLOTS,
             ),
             default_accounts_hash_interval,
         ));
         assert!(is_snapshot_config_valid(
             &new_snapshot_config(
                 snapshot_bank_utils::DEFAULT_FULL_SNAPSHOT_ARCHIVE_INTERVAL_SLOTS,
-                DISABLED_SNAPSHOT_ARCHIVE_INTERVAL
+                DISABLED_SNAPSHOT_ARCHIVE_INTERVAL,
             ),
-            default_accounts_hash_interval
+            default_accounts_hash_interval,
         ));
         assert!(is_snapshot_config_valid(
             &new_snapshot_config(
                 snapshot_bank_utils::DEFAULT_INCREMENTAL_SNAPSHOT_ARCHIVE_INTERVAL_SLOTS,
-                DISABLED_SNAPSHOT_ARCHIVE_INTERVAL
+                DISABLED_SNAPSHOT_ARCHIVE_INTERVAL,
             ),
-            default_accounts_hash_interval
+            default_accounts_hash_interval,
         ));
         assert!(is_snapshot_config_valid(
             &new_snapshot_config(
                 DISABLED_SNAPSHOT_ARCHIVE_INTERVAL,
-                DISABLED_SNAPSHOT_ARCHIVE_INTERVAL
+                DISABLED_SNAPSHOT_ARCHIVE_INTERVAL,
             ),
-            Slot::MAX
+            Slot::MAX,
         ));
 
         assert!(!is_snapshot_config_valid(&new_snapshot_config(0, 100), 100));
         assert!(!is_snapshot_config_valid(&new_snapshot_config(100, 0), 100));
         assert!(!is_snapshot_config_valid(
             &new_snapshot_config(42, 100),
-            100
+            100,
         ));
         assert!(!is_snapshot_config_valid(
             &new_snapshot_config(100, 42),
-            100
+            100,
         ));
         assert!(!is_snapshot_config_valid(
             &new_snapshot_config(100, 100),
-            100
+            100,
         ));
         assert!(!is_snapshot_config_valid(
             &new_snapshot_config(100, 200),
-            100
+            100,
         ));
         assert!(!is_snapshot_config_valid(
             &new_snapshot_config(444, 200),
-            100
+            100,
         ));
         assert!(!is_snapshot_config_valid(
             &new_snapshot_config(400, 222),
-            100
+            100,
         ));
 
         assert!(is_snapshot_config_valid(
             &SnapshotConfig::new_load_only(),
-            100
+            100,
         ));
         assert!(is_snapshot_config_valid(
             &SnapshotConfig {
@@ -2827,7 +2828,7 @@ mod tests {
                 incremental_snapshot_archive_interval_slots: 37,
                 ..SnapshotConfig::new_load_only()
             },
-            100
+            100,
         ));
         assert!(is_snapshot_config_valid(
             &SnapshotConfig {
@@ -2835,7 +2836,7 @@ mod tests {
                 incremental_snapshot_archive_interval_slots: DISABLED_SNAPSHOT_ARCHIVE_INTERVAL,
                 ..SnapshotConfig::new_load_only()
             },
-            100
+            100,
         ));
     }
 

@@ -2,6 +2,7 @@ use {
     solana_entry::entry::UntrustedEntry,
     std::sync::{Arc, RwLock},
 };
+use solana_rpc::transaction_notifier_interface::TransactionNotifier;
 
 /// Interface for notifying block entry changes
 pub trait EntryNotifier {
@@ -12,4 +13,5 @@ pub trait EntryNotifier {
     fn last_insert_entry(&self) -> u64;
 }
 
-pub type EntryNotifierLock = Arc<RwLock<dyn EntryNotifier + Sync + Send>>;
+pub type EntryNotifierArc = Arc<dyn EntryNotifier + Sync + Send>;
+

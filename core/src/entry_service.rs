@@ -1,6 +1,5 @@
 use {
     crossbeam_channel::{RecvTimeoutError},
-    // solana_measure::measure::Measure,
     std::{
         sync::{
             atomic::{AtomicBool, Ordering},
@@ -11,7 +10,7 @@ use {
     },
     solana_entry::entry::EntryReceiver,
 };
-use solana_geyser_plugin_manager::entry_notifier_interface::EntryNotifierLock;
+use solana_geyser_plugin_manager::entry_notifier_interface::EntryNotifierArc;
 
 pub struct EntryService {
     thread_hdl: JoinHandle<()>,

@@ -29,7 +29,7 @@ use {
     crossbeam_channel::{unbounded, Receiver, Sender},
     solana_client::connection_cache::ConnectionCache,
     solana_geyser_plugin_manager::block_metadata_notifier_interface::BlockMetadataNotifierArc,
-    solana_geyser_plugin_manager::entry_notifier_interface::EntryNotifierLock,
+    solana_geyser_plugin_manager::entry_notifier_interface::EntryNotifierArc,
     solana_gossip::{
         cluster_info::ClusterInfo, duplicate_shred_handler::DuplicateShredHandler,
         duplicate_shred_listener::DuplicateShredListener,
@@ -144,7 +144,7 @@ impl Tvu {
         repair_quic_endpoint_sender: AsyncSender<LocalRequest>,
         outstanding_repair_requests: Arc<RwLock<OutstandingShredRepairs>>,
         cluster_slots: Arc<ClusterSlots>,
-        entry_notifier: Option<EntryNotifierLock>,
+        entry_notifier: Option<EntryNotifierArc>,
     ) -> Result<Self, String> {
         let TvuSockets {
             repair: repair_socket,
@@ -512,8 +512,9 @@ pub mod tests {
             repair_quic_endpoint_sender,
             outstanding_repair_requests,
             cluster_slots,
+            None,
         )
-        .expect("assume success");
+            .expect("assume success");
         exit.store(true, Ordering::Relaxed);
         tvu.join().unwrap();
         poh_service.join().unwrap();
