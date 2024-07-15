@@ -1,8 +1,7 @@
 use {
     solana_entry::entry::UntrustedEntry,
-    std::sync::{Arc, RwLock},
+    std::sync::Arc,
 };
-use solana_rpc::transaction_notifier_interface::TransactionNotifier;
 
 /// Interface for notifying block entry changes
 pub trait EntryNotifier {
