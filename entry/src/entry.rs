@@ -51,6 +51,7 @@ lazy_static! {
         .unwrap();
 }
 
+#[derive(Serialize, Deserialize, Debug, Default, PartialEq, Eq, Clone)]
 pub struct UntrustedEntry {
     pub entries: Vec<Entry>,
     pub slot: u64,
