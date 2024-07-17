@@ -3,6 +3,7 @@ use {
     crate::{
         accounts_selector::AccountsSelector,
         entry_selector::EntrySelector,
+        untrusted_entry_selector::UntrustedEntrySelector,
         postgres_client::{ParallelPostgresClient, PostgresClientBuilder, SequencePostgresClient},
         transaction_selector::TransactionSelector,
     },
@@ -30,8 +31,10 @@ pub struct GeyserPluginPostgres {
     accounts_selector: Option<AccountsSelector>,
     transaction_selector: Option<TransactionSelector>,
     entry_selector: Option<EntrySelector>,
+    untrusted_entry_selector: Option<UntrustedEntrySelector>,
     batch_starting_slot: Option<u64>,
     entry_starting_slot: Option<u64>,
+    untrusted_entry_starting_slot: Option<u64>,
 }
 
 impl std::fmt::Debug for GeyserPluginPostgres {
@@ -196,6 +199,7 @@ impl GeyserPlugin for GeyserPluginPostgres {
         self.accounts_selector = Some(Self::create_accounts_selector_from_config(&result));
         self.transaction_selector = Some(Self::create_transaction_selector_from_config(&result));
         self.entry_selector = Some(Self::create_entry_selector_from_config(&result));
+        self.untrusted_entry_selector = Some(Self::create_untrusted_entry_selector_from_config(&result));
 
         let config: GeyserPluginPostgresConfig =
             serde_json::from_str(&contents).map_err(|err| {
@@ -207,11 +211,12 @@ impl GeyserPlugin for GeyserPluginPostgres {
                 }
             })?;
 
-        let (client, batch_optimize_by_skiping_older_slots, entry_starting_slot) =
+        let (client, batch_optimize_by_skiping_older_slots, entry_starting_slot,untrusted_entry_starting_slot) =
             PostgresClientBuilder::build_pararallel_postgres_client(&config)?;
         self.client = Some(client);
         self.batch_starting_slot = batch_optimize_by_skiping_older_slots;
         self.entry_starting_slot = entry_starting_slot;
+        self.untrusted_entry_starting_slot=untrusted_entry_starting_slot;
 
         let sequence_client = PostgresClientBuilder::build_sequence_postgres_client(&config)?;
         self.sequence_client = Some(sequence_client);
@@ -572,8 +577,18 @@ impl GeyserPlugin for GeyserPluginPostgres {
             .map_or_else(|| false, |selector| selector.is_enabled())
     }
 
-    fn last_insert_untrusted_entry(&self) -> u64 {
+    fn untrusted_entry_notifications_enabled(&self) -> bool {
+        self.untrusted_entry_selector
+            .as_ref()
+            .map_or_else(|| false, |selector| selector.is_enabled())
+    }
+
+    fn last_insert_entry(&self) -> u64 {
         self.entry_starting_slot.unwrap()
+    }
+
+    fn last_insert_untrusted_entry(&self) -> u64 {
+        self.untrusted_entry_starting_slot.unwrap()
     }
 }
 
@@ -637,6 +652,15 @@ impl GeyserPluginPostgres {
             EntrySelector::default()
         } else {
             EntrySelector::new(true)
+        }
+    }
+
+    fn create_untrusted_entry_selector_from_config(config: &serde_json::Value) -> UntrustedEntrySelector {
+        let untrusted_entry_selector = &config["untrusted_entry_selector"];
+        if untrusted_entry_selector.is_null() {
+            UntrustedEntrySelector::default()
+        } else {
+            UntrustedEntrySelector::new(true)
         }
     }
 

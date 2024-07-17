@@ -656,13 +656,19 @@ impl Validator {
             .as_ref()
             .and_then(|geyser_plugin_service| geyser_plugin_service.get_block_metadata_notifier());
 
+        let untrusted_entry_notifier = geyser_plugin_service
+            .as_ref()
+            .and_then(|geyser_plugin_service| geyser_plugin_service.get_untrusted_entry_notifier());
+
         info!(
             "Geyser plugin: accounts_update_notifier: {}, \
             transaction_notifier: {}, \
-            entry_notifier: {}",
+            entry_notifier: {}, \
+            untrusted_entry_notifier: {}",
             accounts_update_notifier.is_some(),
             transaction_notifier.is_some(),
-            entry_notifier.is_some()
+            entry_notifier.is_some(),
+            untrusted_entry_notifier.is_some()
         );
 
         let system_monitor_service = Some(SystemMonitorService::new(
@@ -1315,7 +1321,7 @@ impl Validator {
             repair_quic_endpoint_sender,
             outstanding_repair_requests.clone(),
             cluster_slots.clone(),
-            entry_notifier.clone(),
+            untrusted_entry_notifier.clone(),
         )?;
 
         if in_wen_restart {

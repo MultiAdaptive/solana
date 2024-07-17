@@ -3,7 +3,7 @@
   "host": "localhost",
   "user": "solana",
   "password": "1234",
-  "dbname": "solana2",
+  "dbname": "solana3",
   "port": 5432,
   "threads": 20,
   "batch_size": 20,
@@ -18,5 +18,6 @@
       "*"
     ]
   },
-  "entry_selector": true
+  "entry_selector": true,
+  "untrusted_entry_selector": true
 }

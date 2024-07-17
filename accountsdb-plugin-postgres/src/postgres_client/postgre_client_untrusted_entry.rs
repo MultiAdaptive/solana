@@ -12,12 +12,12 @@ use {
 use solana_entry::entry::UntrustedEntry;
 
 impl SimplePostgresClient {
-    pub(crate) fn build_entry_upsert_statement(
+    pub(crate) fn build_untrusted_entry_upsert_statement(
         client: &mut Client,
         config: &GeyserPluginPostgresConfig,
     ) -> Result<Statement, GeyserPluginError> {
         let stmt =
-            "INSERT INTO entry (slot, parent_slot, entry_index, entry, is_full_slot, updated_on) \
+            "INSERT INTO untrusted_entry (slot, parent_slot, entry_index, entry, is_full_slot, updated_on) \
         VALUES ($1, $2, $3, $4, $5, $6)";
 
         let stmt = client.prepare(stmt);
@@ -26,7 +26,7 @@ impl SimplePostgresClient {
             Err(err) => {
                 Err(GeyserPluginError::Custom(Box::new(GeyserPluginPostgresError::DataSchemaError {
                     msg: format!(
-                        "Error in preparing for the entry update PostgreSQL database: ({}) host: {:?} user: {:?} config: {:?}",
+                        "Error in preparing for the untrusted entry update PostgreSQL database: ({}) host: {:?} user: {:?} config: {:?}",
                         err, config.host, config.user, config
                     ),
                 })))
@@ -40,7 +40,7 @@ impl SimplePostgresClient {
         untrusted_entry: UpdateUntrustedEntryRequest,
     ) -> Result<(), GeyserPluginError> {
         let client = self.client.get_mut().unwrap();
-        let statement = &client.log_entry_stmt;
+        let statement = &client.update_untrusted_entry_stmt;
         let client = &mut client.client;
 
         let updated_on = Utc::now().naive_utc();
@@ -75,7 +75,7 @@ impl SimplePostgresClient {
             );
             if let Err(err) = result {
                 let msg = format!(
-                    "Failed to persist entry/shred to the PostgreSQL database. Error: {:?}",
+                    "Failed to persist untrusted entry/shred to the PostgreSQL database. Error: {:?}",
                     err
                 );
                 error!("{}", msg);

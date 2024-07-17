@@ -457,5 +457,11 @@ pub trait GeyserPlugin: Any + Send + Sync + std::fmt::Debug {
         Ok(())
     }
 
+    fn untrusted_entry_notifications_enabled(&self) -> bool {
+        false
+    }
+
+    fn last_insert_entry(&self) -> u64 { 0 }
+
     fn last_insert_untrusted_entry(&self) -> u64 { 0 }
 }

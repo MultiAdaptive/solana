@@ -72,7 +72,7 @@ struct PostgresSqlClientWrapper {
     insert_token_mint_index_stmt: Option<Statement>,
     bulk_insert_token_owner_index_stmt: Option<Statement>,
     bulk_insert_token_mint_index_stmt: Option<Statement>,
-    log_entry_stmt: Statement,
+    update_untrusted_entry_stmt: Statement,
     update_smt_tree_stmt: Statement,
 }
 
@@ -800,7 +800,7 @@ impl SimplePostgresClient {
             Self::build_transaction_info_upsert_statement(&mut client, config)?;
         let update_block_metadata_stmt =
             Self::build_block_metadata_upsert_statement(&mut client, config)?;
-        let log_entry_stmt = Self::build_entry_upsert_statement(&mut client, config)?;
+        let update_untrusted_entry_stmt = Self::build_untrusted_entry_upsert_statement(&mut client, config)?;
         let update_smt_tree_stmt = Self::build_smt_tree_upsert_statement(&mut client, config)?;
 
         let batch_size = config
@@ -867,7 +867,7 @@ impl SimplePostgresClient {
                 insert_token_mint_index_stmt,
                 bulk_insert_token_owner_index_stmt,
                 bulk_insert_token_mint_index_stmt,
-                log_entry_stmt,
+                update_untrusted_entry_stmt,
                 update_smt_tree_stmt,
             }),
             index_token_owner: config.index_token_owner.unwrap_or_default(),
@@ -902,10 +902,34 @@ impl SimplePostgresClient {
         }
     }
 
-    fn get_highest_entry_slot(&mut self) -> Result<u64, GeyserPluginError> {
+    // fn get_highest_entry_slot(&mut self) -> Result<u64, GeyserPluginError> {
+    //     let client = self.client.get_mut().unwrap();
+    //
+    //     let last_slot_query = "SELECT slot FROM entry ORDER BY slot DESC LIMIT 1;";
+    //
+    //     let result = client.client.query_opt(last_slot_query, &[]);
+    //     match result {
+    //         Ok(opt_slot) => Ok(opt_slot
+    //             .map(|row| {
+    //                 let raw_slot: i64 = row.get(0);
+    //                 raw_slot as u64
+    //             })
+    //             .unwrap_or(0)),
+    //         Err(err) => {
+    //             let msg = format!(
+    //                 "Failed to receive last slot from PostgreSQL database. Error: {:?}",
+    //                 err
+    //             );
+    //             error!("{}", msg);
+    //             Err(GeyserPluginError::AccountsUpdateError { msg })
+    //         }
+    //     }
+    // }
+
+    fn get_highest_untrusted_entry_slot(&mut self) -> Result<u64, GeyserPluginError> {
         let client = self.client.get_mut().unwrap();
 
-        let last_slot_query = "SELECT slot FROM entry ORDER BY slot DESC LIMIT 1;";
+        let last_slot_query = "SELECT slot FROM untrusted_entry ORDER BY slot DESC LIMIT 1;";
 
         let result = client.client.query_opt(last_slot_query, &[]);
         match result {
@@ -925,6 +949,7 @@ impl SimplePostgresClient {
             }
         }
     }
+
 }
 
 impl PostgresClient for SimplePostgresClient {
@@ -1363,7 +1388,7 @@ pub struct PostgresClientBuilder {}
 impl PostgresClientBuilder {
     pub fn build_pararallel_postgres_client(
         config: &GeyserPluginPostgresConfig,
-    ) -> Result<(ParallelPostgresClient, Option<u64>, Option<u64>), GeyserPluginError> {
+    ) -> Result<(ParallelPostgresClient, Option<u64>, Option<u64>, Option<u64>), GeyserPluginError> {
         let mut on_load_client = SimplePostgresClient::new(config)?;
 
         let batch_optimize_by_skiping_older_slots =
@@ -1384,9 +1409,10 @@ impl PostgresClientBuilder {
                 }
                 false => None,
             };
-        let entry_starting_slot = on_load_client.get_highest_entry_slot()?;
-        
-        ParallelPostgresClient::new(config).map(|v| (v, batch_optimize_by_skiping_older_slots, Some(entry_starting_slot)))
+        let entry_starting_slot = 0;//on_load_client.get_highest_entry_slot()?;
+        let untrusted_entry_starting_slot = on_load_client.get_highest_untrusted_entry_slot()?;
+
+        ParallelPostgresClient::new(config).map(|v| (v, batch_optimize_by_skiping_older_slots, Some(entry_starting_slot), Some(untrusted_entry_starting_slot)))
     }
 
     pub fn build_sequence_postgres_client(

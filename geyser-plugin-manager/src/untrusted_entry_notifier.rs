@@ -1,19 +1,20 @@
 /// Module responsible for notifying plugins about entries
 use {
     crate::{
-        untrusted_entry_notifier_interface::UntrustedEntryNotifier,
-            geyser_plugin_manager::GeyserPluginManager},
+        geyser_plugin_manager::GeyserPluginManager,
+        untrusted_entry_notifier_interface::UntrustedEntryNotifier},
     log::*,
     solana_entry::entry::EntrySummary,
+    solana_entry::entry::UntrustedEntry,
     solana_geyser_plugin_interface::geyser_plugin_interface::{
         ReplicaEntryInfoV2, ReplicaEntryInfoVersions,
     },
     solana_measure::measure::Measure,
     solana_metrics::*,
     solana_sdk::clock::Slot,
-    solana_entry::entry::UntrustedEntry,
     std::sync::{Arc, RwLock},
 };
+use solana_entry::entry::Entry;
 
 pub(crate) struct UntrustedEntryNotifierImpl {
     plugin_manager: Arc<RwLock<GeyserPluginManager>>,
@@ -33,8 +34,7 @@ impl UntrustedEntryNotifier for UntrustedEntryNotifierImpl {
                 continue;
             }
             match plugin.notify_untrusted_entry(entry) {
-
-                    Err(err) => {
+                Err(err) => {
                     error!(
                         "Failed to notify entry, error: ({}) to plugin {}",
                         err,
@@ -77,19 +77,17 @@ impl UntrustedEntryNotifierImpl {
         Self { plugin_manager }
     }
 
-    // fn build_replica_entry_info(
-    //     slot: Slot,
-    //     index: usize,
-    //     entry: &'_ EntrySummary,
-    //     starting_transaction_index: usize,
-    // ) -> ReplicaEntryInfoV2<'_> {
-    //     ReplicaEntryInfoV2 {
-    //         slot,
-    //         index,
-    //         num_hashes: entry.num_hashes,
-    //         hash: entry.hash.as_ref(),
-    //         executed_transaction_count: entry.num_transactions,
-    //         starting_transaction_index,
-    //     }
-    // }
+    fn build_untrusted_entry(
+        entries: Vec<Entry>,
+        slot: u64,
+        parent_slot: u64,
+        is_full_slot: bool,
+    ) -> UntrustedEntry {
+        UntrustedEntry {
+            entries: entries,
+            slot: slot,
+            parent_slot: parent_slot,
+            is_full_slot: is_full_slot,
+        }
+    }
 }
