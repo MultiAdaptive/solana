@@ -18,7 +18,7 @@ use {
     openssl::ssl::{SslConnector, SslFiletype, SslMethod},
     postgres::{Client, NoTls, Statement},
     postgres_client_block_metadata::DbBlockInfo,
-    postgres_client_transaction::LogTransactionRequest,
+    postgres_client_transaction::UpdateTransactionRequest,
     postgres_openssl::MakeTlsConnector,
     solana_entry::entry::UntrustedEntry,
     solana_geyser_plugin_interface::geyser_plugin_interface::{
@@ -237,9 +237,9 @@ pub trait PostgresClient {
 
     fn notify_end_of_startup(&mut self) -> Result<(), GeyserPluginError>;
 
-    fn log_transaction(
+    fn update_transaction(
         &mut self,
-        transaction_log_info: LogTransactionRequest,
+        transaction_info: UpdateTransactionRequest,
     ) -> Result<(), GeyserPluginError>;
 
     fn update_block_metadata(
@@ -969,11 +969,11 @@ impl PostgresClient for SimplePostgresClient {
         self.flush_buffered_writes()
     }
 
-    fn log_transaction(
+    fn update_transaction(
         &mut self,
-        transaction_log_info: LogTransactionRequest,
+        transaction_info: UpdateTransactionRequest,
     ) -> Result<(), GeyserPluginError> {
-        self.log_transaction_impl(transaction_log_info)
+        self.update_transaction_impl(transaction_info)
     }
 
     fn update_block_metadata(
@@ -1011,7 +1011,7 @@ pub struct UpdateUntrustedEntryRequest {
 enum DbWorkItem {
     UpdateAccount(Box<UpdateAccountRequest>),
     UpdateSlot(Box<UpdateSlotRequest>),
-    LogTransaction(Box<LogTransactionRequest>),
+    UpdateTransaction(Box<UpdateTransactionRequest>),
     UpdateBlockMetadata(Box<UpdateBlockMetadataRequest>),
     UpdateUntrustedEntry(Box<UpdateUntrustedEntryRequest>),
 }
@@ -1074,8 +1074,8 @@ impl PostgresClientWorker {
                             }
                         }
                     }
-                    DbWorkItem::LogTransaction(transaction_log_info) => {
-                        if let Err(err) = self.client.log_transaction(*transaction_log_info) {
+                    DbWorkItem::UpdateTransaction(transaction_info) => {
+                        if let Err(err) = self.client.update_transaction(*transaction_info) {
                             error!("Failed to update transaction: ({})", err);
                             if panic_on_db_errors {
                                 abort();
