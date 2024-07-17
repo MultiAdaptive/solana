@@ -709,8 +709,7 @@ impl Validator {
             &start_progress,
             accounts_update_notifier,
             transaction_notifier,
-            // entry_notifier,
-            None,
+            entry_notifier.clone(),
             Some(poh_timing_point_sender.clone()),
         )?;
         let hard_forks = bank_forks.read().unwrap().root_bank().hard_forks();

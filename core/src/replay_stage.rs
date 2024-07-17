@@ -1,5 +1,6 @@
 //! The `replay_stage` replays transactions broadcast by the leader.
-use solana_geyser_plugin_manager::entry_notifier_interface::EntryNotifierArc;
+// use solana_geyser_plugin_manager::entry_notifier_interface::EntryNotifierArc;
+use solana_ledger::entry_notifier_interface::EntryNotifierArc;
 use {
     crate::{
         banking_trace::BankingTracer,
@@ -3061,30 +3062,30 @@ impl ReplayStage {
 
                 // notify entries once current bank is completed
                 if let Some(ref entry_notifier) = entry_notifier {
-                    unsafe {
-                        let entry_notifier = entry_notifier;
-                        if LAST_NOTIFIED_FULL_SLOT == 0 {
-                            LAST_NOTIFIED_FULL_SLOT = entry_notifier.last_insert_entry();
-                        }
-
-                        let target_slot = LAST_NOTIFIED_FULL_SLOT + 1;
-                        // target slot exists
-                        if let Ok(Some(slot_meta)) = blockstore.meta(target_slot) {
-                            // next slot exists, meaning target slot is final.
-                            if let Ok(Some(_)) = blockstore.meta(target_slot + 1) {
-                                let load_result = blockstore.get_slot_entries_with_shred_info(target_slot, 0, false).unwrap();
-                                let untrusted_entry = UntrustedEntry {
-                                    entries: load_result.0.clone(),
-                                    slot: target_slot,
-                                    parent_slot: slot_meta.parent_slot.unwrap(),
-                                    is_full_slot: load_result.2,
-                                };
-
-                                entry_notifier.notify_entry(&untrusted_entry);
-                                LAST_NOTIFIED_FULL_SLOT += 1;
-                            }
-                        }
-                    }
+                    // unsafe {
+                    //     let entry_notifier = entry_notifier;
+                    //     if LAST_NOTIFIED_FULL_SLOT == 0 {
+                    //         LAST_NOTIFIED_FULL_SLOT = entry_notifier.last_insert_entry();
+                    //     }
+                    //
+                    //     let target_slot = LAST_NOTIFIED_FULL_SLOT + 1;
+                    //     // target slot exists
+                    //     if let Ok(Some(slot_meta)) = blockstore.meta(target_slot) {
+                    //         // next slot exists, meaning target slot is final.
+                    //         if let Ok(Some(_)) = blockstore.meta(target_slot + 1) {
+                    //             let load_result = blockstore.get_slot_entries_with_shred_info(target_slot, 0, false).unwrap();
+                    //             let untrusted_entry = UntrustedEntry {
+                    //                 entries: load_result.0.clone(),
+                    //                 slot: target_slot,
+                    //                 parent_slot: slot_meta.parent_slot.unwrap(),
+                    //                 is_full_slot: load_result.2,
+                    //             };
+                    //
+                    //             entry_notifier.notify_entry(&untrusted_entry);
+                    //             LAST_NOTIFIED_FULL_SLOT += 1;
+                    //         }
+                    //     }
+                    // }
                 }
 
                 bank_complete_time.stop();

@@ -12,7 +12,7 @@ use {
     crossbeam_channel::Receiver,
     log::*,
     solana_accounts_db::accounts_update_notifier_interface::AccountsUpdateNotifier,
-    crate::entry_notifier_interface::EntryNotifierArc,
+    solana_ledger::entry_notifier_interface::EntryNotifierArc,
     solana_rpc::{
         optimistically_confirmed_bank_tracker::SlotNotification,
         transaction_notifier_interface::TransactionNotifierArc,
@@ -30,7 +30,6 @@ use {
     },
     thiserror::Error,
 };
-
 
 /// The service managing the Geyser plugin workflow.
 pub struct GeyserPluginService {

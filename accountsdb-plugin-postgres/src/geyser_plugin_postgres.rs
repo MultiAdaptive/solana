@@ -20,6 +20,7 @@ use {
     std::{fs::File, io::Read},
     thiserror::Error,
 };
+use solana_geyser_plugin_interface::geyser_plugin_interface::ReplicaEntryInfoVersions;
 
 #[derive(Default)]
 pub struct GeyserPluginPostgres {
@@ -494,8 +495,15 @@ impl GeyserPlugin for GeyserPluginPostgres {
         Ok(())
     }
 
-    fn notify_entry(&mut self, entry: &UntrustedEntry) -> Result<()> {
-        println!("****************notify_entry: {:?}", entry);
+    // fn notify_entry(&mut self, entry: &UntrustedEntry) -> Result<()> {
+        fn notify_entry(&mut self, entry: ReplicaEntryInfoVersions) -> Result<()> {
+        // println!("****************notify_entry: {}", ReplicaEntryInfoVersions::V0_0_2(entry));
+
+        match entry {
+            ReplicaEntryInfoVersions::V0_0_2(addr) => println!("notify_entry entry: {:?}", addr),
+            _ => {}
+        }
+
 
         match &mut self.client {
             None => {
@@ -506,15 +514,15 @@ impl GeyserPlugin for GeyserPluginPostgres {
                 )));
             }
             Some(client) => {
-                let result = client.log_entry(entry);
-                if let Err(err) = result {
-                    return Err(GeyserPluginError::EntryUpdateError {
-                        msg: format!(
-                            "Failed to persist entry to the PostgreSQL database. Error: {:?}",
-                            err
-                        ),
-                    });
-                }
+                // let result = client.log_entry(entry);
+                // if let Err(err) = result {
+                //     return Err(GeyserPluginError::EntryUpdateError {
+                //         msg: format!(
+                //             "Failed to persist entry to the PostgreSQL database. Error: {:?}",
+                //             err
+                //         ),
+                //     });
+                // }
             }
         }
 

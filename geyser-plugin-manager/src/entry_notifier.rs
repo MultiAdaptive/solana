@@ -1,11 +1,14 @@
 /// Module responsible for notifying plugins about entries
 use {
-    crate::{entry_notifier_interface::EntryNotifier, geyser_plugin_manager::GeyserPluginManager},
+    crate::{
+        // entry_notifier_interface::EntryNotifier,
+            geyser_plugin_manager::GeyserPluginManager},
     log::*,
     solana_entry::entry::EntrySummary,
     solana_geyser_plugin_interface::geyser_plugin_interface::{
         ReplicaEntryInfoV2, ReplicaEntryInfoVersions,
     },
+    solana_ledger::entry_notifier_interface::EntryNotifier,
     solana_measure::measure::Measure,
     solana_metrics::*,
     solana_sdk::clock::Slot,
@@ -19,22 +22,31 @@ pub(crate) struct EntryNotifierImpl {
 
 impl EntryNotifier for EntryNotifierImpl {
     /// Notify the entry
-    fn notify_entry(&self, entry: &UntrustedEntry) {
+    // fn notify_entry(&self, entry: &UntrustedEntry) {
+        fn notify_entry<'a>(
+            &'a self,
+            slot: Slot,
+            index: usize,
+            entry: &'a EntrySummary,
+            starting_transaction_index: usize,
+        ) {
         let mut measure = Measure::start("geyser-plugin-notify_plugins_of_entry_info");
         let mut plugin_manager = self.plugin_manager.write().unwrap();
         if plugin_manager.plugins.is_empty() {
             return;
         }
 
-        // let entry_info =
-        //     Self::build_replica_entry_info(slot, index, entry, starting_transaction_index);
+        let entry_info =
+            Self::build_replica_entry_info(slot, index, entry, starting_transaction_index);
 
         for plugin in plugin_manager.plugins.iter_mut() {
             if !plugin.entry_notifications_enabled() {
                 continue;
             }
-            match plugin.notify_entry(entry) {
-                Err(err) => {
+            // match plugin.notify_entry(entry) {
+                match plugin.notify_entry(ReplicaEntryInfoVersions::V0_0_2(&entry_info)) {
+
+                    Err(err) => {
                     error!(
                         "Failed to notify entry, error: ({}) to plugin {}",
                         err,
@@ -55,21 +67,21 @@ impl EntryNotifier for EntryNotifierImpl {
         );
     }
 
-    fn last_insert_entry(&self) -> u64 {
-        let mut plugin_manager = self.plugin_manager.write().unwrap();
-        if plugin_manager.plugins.is_empty() {
-            return 0;
-        }
-
-        for plugin in plugin_manager.plugins.iter_mut() {
-            if !plugin.entry_notifications_enabled() {
-                continue;
-            }
-            return plugin.last_insert_entry();
-        }
-
-        0
-    }
+    // fn last_insert_entry(&self) -> u64 {
+    //     let mut plugin_manager = self.plugin_manager.write().unwrap();
+    //     if plugin_manager.plugins.is_empty() {
+    //         return 0;
+    //     }
+    //
+    //     for plugin in plugin_manager.plugins.iter_mut() {
+    //         if !plugin.entry_notifications_enabled() {
+    //             continue;
+    //         }
+    //         return plugin.last_insert_entry();
+    //     }
+    //
+    //     0
+    // }
 }
 
 impl EntryNotifierImpl {

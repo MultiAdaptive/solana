@@ -29,7 +29,7 @@ use {
     crossbeam_channel::{unbounded, Receiver, Sender},
     solana_client::connection_cache::ConnectionCache,
     solana_geyser_plugin_manager::block_metadata_notifier_interface::BlockMetadataNotifierArc,
-    solana_geyser_plugin_manager::entry_notifier_interface::EntryNotifierArc,
+    // solana_geyser_plugin_manager::entry_notifier_interface::EntryNotifierArc,
     solana_gossip::{
         cluster_info::ClusterInfo, duplicate_shred_handler::DuplicateShredHandler,
         duplicate_shred_listener::DuplicateShredListener,
@@ -59,6 +59,7 @@ use {
     },
     tokio::sync::mpsc::Sender as AsyncSender,
 };
+use solana_ledger::entry_notifier_interface::EntryNotifierArc;
 
 pub struct Tvu {
     fetch_stage: ShredFetchStage,

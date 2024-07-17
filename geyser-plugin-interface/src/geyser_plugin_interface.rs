@@ -417,7 +417,8 @@ pub trait GeyserPlugin: Any + Send + Sync + std::fmt::Debug {
 
     /// Called when an entry is executed.
     #[allow(unused_variables)]
-    fn notify_entry(&mut self, entry: &UntrustedEntry) -> Result<()> {
+    // fn notify_entry(&mut self, entry: &UntrustedEntry) -> Result<()> {
+        fn notify_entry(&mut self, entry: ReplicaEntryInfoVersions) -> Result<()> {
         Ok(())
     }
 
