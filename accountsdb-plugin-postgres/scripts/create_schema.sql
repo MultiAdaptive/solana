@@ -7,7 +7,7 @@
 CREATE TABLE account
 (
     id            bigserial PRIMARY KEY,
-    pubkey        BYTEA UNIQUE,
+    pubkey        BYTEA UNIQUE NOT NULL,
     owner         BYTEA,
     lamports      BIGINT    NOT NULL,
     slot          BIGINT    NOT NULL,
@@ -26,7 +26,8 @@ CREATE INDEX account_slot ON account (slot);
 -- The table storing slot information
 CREATE TABLE slot
 (
-    slot       BIGINT PRIMARY KEY,
+    id         bigserial PRIMARY KEY,
+    slot       BIGINT UNIQUE NOT NULL,
     parent     BIGINT,
     status     VARCHAR(16) NOT NULL,
     updated_on TIMESTAMP   NOT NULL
