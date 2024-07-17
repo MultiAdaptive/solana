@@ -8,6 +8,7 @@ use {
         signature::Signature,
         transaction::SanitizedTransaction,
     },
+    solana_entry::entry::UntrustedEntry,
     solana_transaction_status::{Reward, TransactionStatusMeta},
     std::{any::Any, error, io},
     thiserror::Error,
@@ -287,6 +288,18 @@ pub enum GeyserPluginError {
     /// Error when updating the transaction.
     #[error("Error updating transaction. Error message: ({msg})")]
     TransactionUpdateError { msg: String },
+
+    /// Error when updating the entry.
+    #[error("Error updating entry. Error message: ({msg})")]
+    EntryUpdateError { msg: String },
+
+    /// Error when updating the untrusted entry.
+    #[error("Error updating untrusted entry. Error message: ({msg})")]
+    UntrustedEntryUpdateError { msg: String },
+
+    /// Error when updating the merkle tree root.
+    #[error("Error updating smt root. Error message: ({msg})")]
+    SMTUpdateError { msg: String },
 }
 
 /// The current status of a slot
@@ -372,7 +385,7 @@ pub trait GeyserPlugin: Any + Send + Sync + std::fmt::Debug {
     /// the account is updated during transaction processing.
     #[allow(unused_variables)]
     fn update_account(
-        &self,
+        &mut self,
         account: ReplicaAccountInfoVersions,
         slot: Slot,
         is_startup: bool,
@@ -381,14 +394,14 @@ pub trait GeyserPlugin: Any + Send + Sync + std::fmt::Debug {
     }
 
     /// Called when all accounts are notified of during startup.
-    fn notify_end_of_startup(&self) -> Result<()> {
+    fn notify_end_of_startup(&mut self) -> Result<()> {
         Ok(())
     }
 
     /// Called when a slot status is updated
     #[allow(unused_variables)]
     fn update_slot_status(
-        &self,
+        &mut self,
         slot: Slot,
         parent: Option<u64>,
         status: SlotStatus,
@@ -399,7 +412,7 @@ pub trait GeyserPlugin: Any + Send + Sync + std::fmt::Debug {
     /// Called when a transaction is processed in a slot.
     #[allow(unused_variables)]
     fn notify_transaction(
-        &self,
+        &mut self,
         transaction: ReplicaTransactionInfoVersions,
         slot: Slot,
     ) -> Result<()> {
@@ -408,13 +421,13 @@ pub trait GeyserPlugin: Any + Send + Sync + std::fmt::Debug {
 
     /// Called when an entry is executed.
     #[allow(unused_variables)]
-    fn notify_entry(&self, entry: ReplicaEntryInfoVersions) -> Result<()> {
+    fn notify_entry(&mut self, entry: ReplicaEntryInfoVersions) -> Result<()> {
         Ok(())
     }
 
     /// Called when block's metadata is updated.
     #[allow(unused_variables)]
-    fn notify_block_metadata(&self, blockinfo: ReplicaBlockInfoVersions) -> Result<()> {
+    fn notify_block_metadata(&mut self, blockinfo: ReplicaBlockInfoVersions) -> Result<()> {
         Ok(())
     }
 
@@ -438,4 +451,17 @@ pub trait GeyserPlugin: Any + Send + Sync + std::fmt::Debug {
     fn entry_notifications_enabled(&self) -> bool {
         false
     }
+
+    #[allow(unused_variables)]
+    fn notify_untrusted_entry(&mut self, entry: &UntrustedEntry) -> Result<()> {
+        Ok(())
+    }
+
+    fn untrusted_entry_notifications_enabled(&self) -> bool {
+        false
+    }
+
+    fn last_insert_entry(&self) -> u64 { 0 }
+
+    fn last_insert_untrusted_entry(&self) -> u64 { 0 }
 }

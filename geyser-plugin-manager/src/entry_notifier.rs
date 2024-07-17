@@ -26,8 +26,7 @@ impl EntryNotifier for EntryNotifierImpl {
         starting_transaction_index: usize,
     ) {
         let mut measure = Measure::start("geyser-plugin-notify_plugins_of_entry_info");
-
-        let plugin_manager = self.plugin_manager.read().unwrap();
+        let mut plugin_manager = self.plugin_manager.write().unwrap();
         if plugin_manager.plugins.is_empty() {
             return;
         }
@@ -35,7 +34,7 @@ impl EntryNotifier for EntryNotifierImpl {
         let entry_info =
             Self::build_replica_entry_info(slot, index, entry, starting_transaction_index);
 
-        for plugin in plugin_manager.plugins.iter() {
+        for plugin in plugin_manager.plugins.iter_mut() {
             if !plugin.entry_notifications_enabled() {
                 continue;
             }

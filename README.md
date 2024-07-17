@@ -102,6 +102,16 @@ $ scripts/coverage.sh
 $ open target/cov/lcov-local/index.html
 ```
 
+
+
+```shell
+psql -U solana -p 5432 -h localhost -d solana -f accountsdb-plugin-postgres/scripts/create_schema.sql
+```
+
+```shell
+./target/release/solana-test-validator --geyser-plugin-config ./accountsdb-plugin-postgres/scripts/geyser.json
+```
+
 Why coverage? While most see coverage as a code quality metric, we see it primarily as a developer
 productivity metric. When a developer makes a change to the codebase, presumably it's a *solution* to
 some problem.  Our unit-test suite is how we encode the set of *problems* the codebase solves. Running

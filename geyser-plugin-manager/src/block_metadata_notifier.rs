@@ -33,13 +33,13 @@ impl BlockMetadataNotifier for BlockMetadataNotifierImpl {
         executed_transaction_count: u64,
         entry_count: u64,
     ) {
-        let plugin_manager = self.plugin_manager.read().unwrap();
+        let mut plugin_manager = self.plugin_manager.write().unwrap();
         if plugin_manager.plugins.is_empty() {
             return;
         }
         let rewards = Self::build_rewards(rewards);
 
-        for plugin in plugin_manager.plugins.iter() {
+        for plugin in plugin_manager.plugins.iter_mut() {
             let mut measure = Measure::start("geyser-plugin-update-slot");
             let block_info = Self::build_replica_block_info(
                 parent_slot,
