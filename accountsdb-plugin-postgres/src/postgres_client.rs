@@ -1,6 +1,6 @@
 #![allow(clippy::arithmetic_side_effects)]
 
-mod postgre_client_entry;
+mod postgre_client_untrusted_entry;
 mod postgres_client_account_index;
 mod postgres_client_block_metadata;
 mod postgres_client_transaction;

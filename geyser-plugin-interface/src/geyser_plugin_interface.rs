@@ -457,5 +457,5 @@ pub trait GeyserPlugin: Any + Send + Sync + std::fmt::Debug {
         Ok(())
     }
 
-    fn last_insert_entry(&self) -> u64 { 0 }
+    fn last_insert_untrusted_entry(&self) -> u64 { 0 }
 }

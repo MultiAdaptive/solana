@@ -1,5 +1,5 @@
 //! The `replay_stage` replays transactions broadcast by the leader.
-// use solana_geyser_plugin_manager::entry_notifier_interface::EntryNotifierArc;
+use solana_geyser_plugin_manager::untrusted_entry_notifier_interface::UntrustedEntryNotifierArc;
 use solana_ledger::entry_notifier_interface::EntryNotifierArc;
 use {
     crate::{

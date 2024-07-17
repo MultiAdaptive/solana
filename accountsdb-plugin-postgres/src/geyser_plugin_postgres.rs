@@ -572,7 +572,7 @@ impl GeyserPlugin for GeyserPluginPostgres {
             .map_or_else(|| false, |selector| selector.is_enabled())
     }
 
-    fn last_insert_entry(&self) -> u64 {
+    fn last_insert_untrusted_entry(&self) -> u64 {
         self.entry_starting_slot.unwrap()
     }
 }

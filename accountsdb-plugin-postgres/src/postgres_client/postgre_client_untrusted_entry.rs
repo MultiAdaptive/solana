@@ -1,5 +1,3 @@
-// build_entry_upsert_statement
-
 use {
     crate::{
         geyser_plugin_postgres::{GeyserPluginPostgresConfig, GeyserPluginPostgresError},
