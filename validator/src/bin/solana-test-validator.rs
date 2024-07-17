@@ -582,9 +582,9 @@ fn main() {
         rpc_to_plugin_manager_receiver,
     ) {
         Ok(test_validator) => {
-            // if let Some(dashboard) = dashboard {
-            //     dashboard.run(Duration::from_millis(250));
-            // }
+            if let Some(dashboard) = dashboard {
+                dashboard.run(Duration::from_millis(250));
+            }
             test_validator.join();
         }
         Err(err) => {
