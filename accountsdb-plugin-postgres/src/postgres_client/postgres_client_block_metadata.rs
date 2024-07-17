@@ -1,11 +1,11 @@
 use {
+    chrono::Utc,
     crate::{
         geyser_plugin_postgres::{GeyserPluginPostgresConfig, GeyserPluginPostgresError},
         postgres_client::{
             postgres_client_transaction::DbReward, SimplePostgresClient, UpdateBlockMetadataRequest,
         },
     },
-    chrono::Utc,
     log::*,
     postgres::{Client, Statement},
     solana_geyser_plugin_interface::geyser_plugin_interface::{

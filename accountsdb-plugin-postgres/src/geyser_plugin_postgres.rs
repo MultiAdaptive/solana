@@ -1,13 +1,13 @@
 /// Main entry for the PostgreSQL plugin
 use {
+    bs58,
     crate::{
         accounts_selector::AccountsSelector,
         entry_selector::EntrySelector,
-        untrusted_entry_selector::UntrustedEntrySelector,
         postgres_client::{ParallelPostgresClient, PostgresClientBuilder, SequencePostgresClient},
         transaction_selector::TransactionSelector,
+        untrusted_entry_selector::UntrustedEntrySelector,
     },
-    bs58,
     log::*,
     serde_derive::{Deserialize, Serialize},
     serde_json,
@@ -211,12 +211,12 @@ impl GeyserPlugin for GeyserPluginPostgres {
                 }
             })?;
 
-        let (client, batch_optimize_by_skiping_older_slots, entry_starting_slot,untrusted_entry_starting_slot) =
+        let (client, batch_optimize_by_skiping_older_slots, entry_starting_slot, untrusted_entry_starting_slot) =
             PostgresClientBuilder::build_pararallel_postgres_client(&config)?;
         self.client = Some(client);
         self.batch_starting_slot = batch_optimize_by_skiping_older_slots;
         self.entry_starting_slot = entry_starting_slot;
-        self.untrusted_entry_starting_slot=untrusted_entry_starting_slot;
+        self.untrusted_entry_starting_slot = untrusted_entry_starting_slot;
 
         let sequence_client = PostgresClientBuilder::build_sequence_postgres_client(&config)?;
         self.sequence_client = Some(sequence_client);
@@ -253,9 +253,9 @@ impl GeyserPlugin for GeyserPluginPostgres {
 
         if is_startup
             && self
-                .batch_starting_slot
-                .map(|slot_limit| slot < slot_limit)
-                .unwrap_or(false)
+            .batch_starting_slot
+            .map(|slot_limit| slot < slot_limit)
+            .unwrap_or(false)
         {
             return Ok(());
         }
@@ -378,7 +378,7 @@ impl GeyserPlugin for GeyserPluginPostgres {
                 let result = client.update_slot_status(slot, parent, status);
 
                 if let Err(err) = result {
-                    return Err(GeyserPluginError::SlotStatusUpdateError{
+                    return Err(GeyserPluginError::SlotStatusUpdateError {
                         msg: format!("Failed to persist the update of slot to the PostgreSQL database. Error: {:?}", err)
                     });
                 }
@@ -402,7 +402,7 @@ impl GeyserPlugin for GeyserPluginPostgres {
                 let result = client.notify_end_of_startup();
 
                 if let Err(err) = result {
-                    return Err(GeyserPluginError::SlotStatusUpdateError{
+                    return Err(GeyserPluginError::SlotStatusUpdateError {
                         msg: format!("Failed to notify the end of startup for accounts notifications. Error: {:?}", err)
                     });
                 }
@@ -440,13 +440,13 @@ impl GeyserPlugin for GeyserPluginPostgres {
                     let result = client.update_transaction_info(transaction_info, slot);
 
                     if let Err(err) = result {
-                        return Err(GeyserPluginError::SlotStatusUpdateError{
-                                msg: format!("Failed to persist the transaction info to the PostgreSQL database. Error: {:?}", err)
-                            });
+                        return Err(GeyserPluginError::SlotStatusUpdateError {
+                            msg: format!("Failed to persist the transaction info to the PostgreSQL database. Error: {:?}", err)
+                        });
                     }
                 }
                 _ => {
-                    return Err(GeyserPluginError::SlotStatusUpdateError{
+                    return Err(GeyserPluginError::SlotStatusUpdateError {
                         msg: "Failed to persist the transaction info to the PostgreSQL database. Unsupported format.".to_string()
                     });
                 }
@@ -470,18 +470,18 @@ impl GeyserPlugin for GeyserPluginPostgres {
                     let result = client.update_block_metadata(block_info);
 
                     if let Err(err) = result {
-                        return Err(GeyserPluginError::SlotStatusUpdateError{
-                                msg: format!("Failed to persist the update of block metadata to the PostgreSQL database. Error: {:?}", err)
-                            });
+                        return Err(GeyserPluginError::SlotStatusUpdateError {
+                            msg: format!("Failed to persist the update of block metadata to the PostgreSQL database. Error: {:?}", err)
+                        });
                     }
                 }
                 ReplicaBlockInfoVersions::V0_0_2(_block_info) => {
-                    return Err(GeyserPluginError::SlotStatusUpdateError{
+                    return Err(GeyserPluginError::SlotStatusUpdateError {
                         msg: "Failed to persist the transaction info to the PostgreSQL database. Unsupported format.".to_string()
                     });
                 }
                 ReplicaBlockInfoVersions::V0_0_1(_) => {
-                    return Err(GeyserPluginError::SlotStatusUpdateError{
+                    return Err(GeyserPluginError::SlotStatusUpdateError {
                         msg: "Failed to persist the transaction info to the PostgreSQL database. Unsupported format.".to_string()
                     });
                 }
@@ -491,35 +491,34 @@ impl GeyserPlugin for GeyserPluginPostgres {
         Ok(())
     }
 
-        fn notify_entry(&mut self, entry: ReplicaEntryInfoVersions) -> Result<()> {
-        // println!("****************notify_entry: {}", ReplicaEntryInfoVersions::V0_0_2(entry));
-
-        // match entry {
-        //     ReplicaEntryInfoVersions::V0_0_2(addr) => println!("notify_entry entry: {:?}", addr),
-        //     _ => {}
-        // }
-
-
-        // match &mut self.client {
-        //     None => {
-        //         return Err(GeyserPluginError::Custom(Box::new(
-        //             GeyserPluginPostgresError::DataStoreConnectionError {
-        //                 msg: "There is no connection to the PostgreSQL database.".to_string(),
-        //             },
-        //         )));
-        //     }
-        //     // Some(client) => {
-        //     //     let result = client.log_entry(entry);
-        //     //     if let Err(err) = result {
-        //     //         return Err(GeyserPluginError::EntryUpdateError {
-        //     //             msg: format!(
-        //     //                 "Failed to persist entry to the PostgreSQL database. Error: {:?}",
-        //     //                 err
-        //     //             ),
-        //     //         });
-        //     //     }
-        //     // }
-        // }
+    fn notify_entry(&mut self, entry: ReplicaEntryInfoVersions) -> Result<()> {
+        match &mut self.client {
+            None => {
+                return Err(GeyserPluginError::Custom(Box::new(
+                    GeyserPluginPostgresError::DataStoreConnectionError {
+                        msg: "There is no connection to the PostgreSQL database.".to_string(),
+                    },
+                )));
+            }
+            Some(client) => match entry {
+                ReplicaEntryInfoVersions::V0_0_2(entry) => {
+                    let result = client.update_entry(entry);
+                    if let Err(err) = result {
+                        return Err(GeyserPluginError::EntryUpdateError {
+                            msg: format!(
+                                "Failed to persist entry to the PostgreSQL database. Error: {:?}",
+                                err
+                            ),
+                        });
+                    }
+                }
+                _ => {
+                    return Err(GeyserPluginError::EntryUpdateError {
+                        msg: "Failed to persist entry to the PostgreSQL database. Unsupported format.".to_string()
+                    });
+                }
+            },
+        }
 
         Ok(())
     }
@@ -549,9 +548,6 @@ impl GeyserPlugin for GeyserPluginPostgres {
 
         Ok(())
     }
-
-
-
 
 
     /// Check if the plugin is interested in account data
@@ -681,10 +677,9 @@ pub unsafe extern "C" fn _create_plugin() -> *mut dyn GeyserPlugin {
 }
 
 
-
 #[cfg(test)]
 pub(crate) mod tests {
-    use {super::*, serde_json};
+    use {serde_json, super::*};
 
     #[test]
     fn test_accounts_selector_from_config() {

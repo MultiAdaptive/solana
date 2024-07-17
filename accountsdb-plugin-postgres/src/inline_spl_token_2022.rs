@@ -12,8 +12,8 @@ impl GenericTokenAccount for Account {
     fn valid_account_data(account_data: &[u8]) -> bool {
         inline_spl_token::Account::valid_account_data(account_data)
             || ACCOUNTTYPE_ACCOUNT
-                == *account_data
-                    .get(inline_spl_token::Account::get_packed_len())
-                    .unwrap_or(&0)
+            == *account_data
+            .get(inline_spl_token::Account::get_packed_len())
+            .unwrap_or(&0)
     }
 }

@@ -4,14 +4,9 @@ use {
         geyser_plugin_manager::GeyserPluginManager,
         untrusted_entry_notifier_interface::UntrustedEntryNotifier},
     log::*,
-    solana_entry::entry::EntrySummary,
     solana_entry::entry::UntrustedEntry,
-    solana_geyser_plugin_interface::geyser_plugin_interface::{
-        ReplicaEntryInfoV2, ReplicaEntryInfoVersions,
-    },
     solana_measure::measure::Measure,
     solana_metrics::*,
-    solana_sdk::clock::Slot,
     std::sync::{Arc, RwLock},
 };
 use solana_entry::entry::Entry;
@@ -23,14 +18,14 @@ pub(crate) struct UntrustedEntryNotifierImpl {
 impl UntrustedEntryNotifier for UntrustedEntryNotifierImpl {
     /// Notify the entry
     fn notify_untrusted_entry(&self, entry: &UntrustedEntry) {
-        let mut measure = Measure::start("geyser-plugin-notify_plugins_of_entry_info");
+        let mut measure = Measure::start("geyser-plugin-notify_plugins_of_untrusted_entry_info");
         let mut plugin_manager = self.plugin_manager.write().unwrap();
         if plugin_manager.plugins.is_empty() {
             return;
         }
 
         for plugin in plugin_manager.plugins.iter_mut() {
-            if !plugin.entry_notifications_enabled() {
+            if !plugin.untrusted_entry_notifications_enabled() {
                 continue;
             }
             match plugin.notify_untrusted_entry(entry) {
@@ -48,7 +43,7 @@ impl UntrustedEntryNotifier for UntrustedEntryNotifierImpl {
         }
         measure.stop();
         inc_new_counter_debug!(
-            "geyser-plugin-notify_plugins_of_entry_info-us",
+            "geyser-plugin-notify_plugins_of_untrusted_entry_info-us",
             measure.as_us() as usize,
             10000,
             10000
@@ -62,7 +57,7 @@ impl UntrustedEntryNotifier for UntrustedEntryNotifierImpl {
         }
 
         for plugin in plugin_manager.plugins.iter_mut() {
-            if !plugin.entry_notifications_enabled() {
+            if !plugin.untrusted_entry_notifications_enabled() {
                 continue;
             }
             return plugin.last_insert_untrusted_entry();

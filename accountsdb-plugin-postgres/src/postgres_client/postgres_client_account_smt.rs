@@ -1,10 +1,9 @@
-
 use {
+    chrono::Utc,
     crate::{
         geyser_plugin_postgres::{GeyserPluginPostgresConfig, GeyserPluginPostgresError},
-        postgres_client::{SimplePostgresClient},
+        postgres_client::SimplePostgresClient,
     },
-    chrono::Utc,
     log::*,
     postgres::{Client, Statement},
     solana_geyser_plugin_interface::geyser_plugin_interface::GeyserPluginError,
@@ -12,7 +11,7 @@ use {
 
 impl SimplePostgresClient {
     pub(crate) fn build_smt_tree_upsert_statement(client: &mut Client,
-                                       config: &GeyserPluginPostgresConfig,
+                                                  config: &GeyserPluginPostgresConfig,
     ) -> Result<Statement, GeyserPluginError> {
         let stmt =
             "INSERT INTO merkle_tree_proof (slot, root_hash, updated_on) \
@@ -44,7 +43,7 @@ impl SimplePostgresClient {
             &[
                 &(slot as i64),
                 &hex_proof,
-                &updated_on]
+                &updated_on],
         );
 
         if let Err(err) = result {
@@ -52,7 +51,7 @@ impl SimplePostgresClient {
                 "Failed to persist smt_proof to the PostgreSQL database. Error: {:?}",
                 err);
             error!("{}", msg);
-            return Err(GeyserPluginError::SMTUpdateError {msg});
+            return Err(GeyserPluginError::SMTUpdateError { msg });
         }
 
         Ok(())

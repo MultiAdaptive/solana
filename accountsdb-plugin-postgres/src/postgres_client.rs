@@ -1,52 +1,54 @@
 #![allow(clippy::arithmetic_side_effects)]
 
-mod postgre_client_untrusted_entry;
-mod postgres_client_account_index;
-mod postgres_client_block_metadata;
-mod postgres_client_transaction;
-mod postgres_client_account_smt;
-
 /// A concurrent implementation for writing accounts into the PostgreSQL in parallel.
 use {
+    blake3::{self, Hash},
+    chrono::Utc,
     crate::{
         geyser_plugin_postgres::{GeyserPluginPostgresConfig, GeyserPluginPostgresError},
         postgres_client::postgres_client_account_index::TokenSecondaryIndexEntry,
     },
-    chrono::Utc,
     crossbeam_channel::{bounded, Receiver, RecvTimeoutError, Sender},
     log::*,
     openssl::ssl::{SslConnector, SslFiletype, SslMethod},
     postgres::{Client, NoTls, Statement},
     postgres_client_block_metadata::DbBlockInfo,
+    postgres_client_entry::DbEntryInfo,
     postgres_client_transaction::UpdateTransactionRequest,
     postgres_openssl::MakeTlsConnector,
+    rocksdb::*,
     solana_entry::entry::UntrustedEntry,
     solana_geyser_plugin_interface::geyser_plugin_interface::{
-        GeyserPluginError, ReplicaAccountInfoV3, ReplicaBlockInfoV3, SlotStatus,
+        GeyserPluginError, ReplicaAccountInfoV3, ReplicaBlockInfoV3, ReplicaEntryInfoV2, SlotStatus,
     },
     solana_measure::measure::Measure,
     solana_metrics::*,
-    solana_sdk::{timing::AtomicInterval, pubkey::Pubkey},
-    std::{
-        collections::HashSet,
-        sync::{
-            atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering},
-            Arc, Mutex, RwLock,
-        },
-        thread::{self, sleep, Builder, JoinHandle},
-        time::Duration,
-        path::Path,
-    },
-    tokio_postgres::types,
-    sparse_merkle_tree::H256,
-    blake3::{self, Hash},
+    solana_sdk::{pubkey::Pubkey, timing::AtomicInterval},
     solana_smt::{
         account_smt::{RocksStoreSMT, SMTAccount},
         rocks_store::RocksStore,
     },
-    rocksdb::*,
+    sparse_merkle_tree::H256,
+    std::{
+        collections::HashSet,
+        path::Path,
+        sync::{
+            Arc,
+            atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering}, Mutex, RwLock,
+        },
+        thread::{self, Builder, JoinHandle, sleep},
+        time::Duration,
+    },
+    tokio_postgres::types,
 };
+use solana_geyser_plugin_interface::geyser_plugin_interface::ReplicaTransactionInfoV2;
 
+mod postgres_client_untrusted_entry;
+mod postgres_client_account_index;
+mod postgres_client_block_metadata;
+mod postgres_client_transaction;
+mod postgres_client_account_smt;
+mod postgres_client_entry;
 
 /// The maximum asynchronous requests allowed in the channel to avoid excessive
 /// memory usage. The downside -- calls after this threshold is reached can get blocked.
@@ -73,6 +75,7 @@ struct PostgresSqlClientWrapper {
     bulk_insert_token_owner_index_stmt: Option<Statement>,
     bulk_insert_token_mint_index_stmt: Option<Statement>,
     update_untrusted_entry_stmt: Statement,
+    update_entry_stmt: Statement,
     update_smt_tree_stmt: Statement,
 }
 
@@ -248,6 +251,8 @@ pub trait PostgresClient {
     ) -> Result<(), GeyserPluginError>;
 
     fn update_untrusted_entry(&mut self, untrusted_entry: UpdateUntrustedEntryRequest) -> Result<(), GeyserPluginError>;
+
+    fn update_entry(&mut self, entry: UpdateEntryRequest) -> Result<(), GeyserPluginError>;
 }
 
 impl SimplePostgresClient {
@@ -517,7 +522,6 @@ impl SimplePostgresClient {
             Ok(stmt) => Ok(stmt),
         }
     }
-
 
 
     /// Internal function for inserting an account into account_audit table.
@@ -801,6 +805,7 @@ impl SimplePostgresClient {
         let update_block_metadata_stmt =
             Self::build_block_metadata_upsert_statement(&mut client, config)?;
         let update_untrusted_entry_stmt = Self::build_untrusted_entry_upsert_statement(&mut client, config)?;
+        let update_entry_stmt = Self::build_entry_upsert_statement(&mut client, config)?;
         let update_smt_tree_stmt = Self::build_smt_tree_upsert_statement(&mut client, config)?;
 
         let batch_size = config
@@ -868,6 +873,7 @@ impl SimplePostgresClient {
                 bulk_insert_token_owner_index_stmt,
                 bulk_insert_token_mint_index_stmt,
                 update_untrusted_entry_stmt,
+                update_entry_stmt,
                 update_smt_tree_stmt,
             }),
             index_token_owner: config.index_token_owner.unwrap_or_default(),
@@ -902,29 +908,29 @@ impl SimplePostgresClient {
         }
     }
 
-    // fn get_highest_entry_slot(&mut self) -> Result<u64, GeyserPluginError> {
-    //     let client = self.client.get_mut().unwrap();
-    //
-    //     let last_slot_query = "SELECT slot FROM entry ORDER BY slot DESC LIMIT 1;";
-    //
-    //     let result = client.client.query_opt(last_slot_query, &[]);
-    //     match result {
-    //         Ok(opt_slot) => Ok(opt_slot
-    //             .map(|row| {
-    //                 let raw_slot: i64 = row.get(0);
-    //                 raw_slot as u64
-    //             })
-    //             .unwrap_or(0)),
-    //         Err(err) => {
-    //             let msg = format!(
-    //                 "Failed to receive last slot from PostgreSQL database. Error: {:?}",
-    //                 err
-    //             );
-    //             error!("{}", msg);
-    //             Err(GeyserPluginError::AccountsUpdateError { msg })
-    //         }
-    //     }
-    // }
+    fn get_highest_entry_slot(&mut self) -> Result<u64, GeyserPluginError> {
+        let client = self.client.get_mut().unwrap();
+
+        let last_slot_query = "SELECT slot FROM entry ORDER BY slot DESC LIMIT 1;";
+
+        let result = client.client.query_opt(last_slot_query, &[]);
+        match result {
+            Ok(opt_slot) => Ok(opt_slot
+                .map(|row| {
+                    let raw_slot: i64 = row.get(0);
+                    raw_slot as u64
+                })
+                .unwrap_or(0)),
+            Err(err) => {
+                let msg = format!(
+                    "Failed to receive last slot from PostgreSQL database. Error: {:?}",
+                    err
+                );
+                error!("{}", msg);
+                Err(GeyserPluginError::AccountsUpdateError { msg })
+            }
+        }
+    }
 
     fn get_highest_untrusted_entry_slot(&mut self) -> Result<u64, GeyserPluginError> {
         let client = self.client.get_mut().unwrap();
@@ -949,7 +955,6 @@ impl SimplePostgresClient {
             }
         }
     }
-
 }
 
 impl PostgresClient for SimplePostgresClient {
@@ -1011,6 +1016,10 @@ impl PostgresClient for SimplePostgresClient {
     fn update_untrusted_entry(&mut self, untrusted_entry: UpdateUntrustedEntryRequest) -> Result<(), GeyserPluginError> {
         self.update_untrusted_entry_impl(untrusted_entry)
     }
+
+    fn update_entry(&mut self, entry: UpdateEntryRequest) -> Result<(), GeyserPluginError> {
+        self.update_entry_impl(entry)
+    }
 }
 
 struct UpdateAccountRequest {
@@ -1032,6 +1041,10 @@ pub struct UpdateUntrustedEntryRequest {
     pub entry: UntrustedEntry,
 }
 
+pub struct UpdateEntryRequest {
+    pub entry_info: DbEntryInfo,
+}
+
 #[warn(clippy::large_enum_variant)]
 enum DbWorkItem {
     UpdateAccount(Box<UpdateAccountRequest>),
@@ -1039,6 +1052,7 @@ enum DbWorkItem {
     UpdateTransaction(Box<UpdateTransactionRequest>),
     UpdateBlockMetadata(Box<UpdateBlockMetadataRequest>),
     UpdateUntrustedEntry(Box<UpdateUntrustedEntryRequest>),
+    UpdateEntry(Box<UpdateEntryRequest>),
 }
 
 impl PostgresClientWorker {
@@ -1117,7 +1131,15 @@ impl PostgresClientWorker {
                     }
                     DbWorkItem::UpdateUntrustedEntry(entry) => {
                         if let Err(err) = self.client.update_untrusted_entry(*entry) {
-                            error!("Failed to log entry : ({})", err);
+                            error!("Failed to update untrusted entry : ({})", err);
+                            if panic_on_db_errors {
+                                abort();
+                            }
+                        }
+                    }
+                    DbWorkItem::UpdateEntry(entry) => {
+                        if let Err(err) = self.client.update_entry(*entry) {
+                            error!("Failed to update entry : ({})", err);
                             if panic_on_db_errors {
                                 abort();
                             }
@@ -1339,6 +1361,20 @@ impl ParallelPostgresClient {
         Ok(())
     }
 
+    pub fn update_entry(&mut self, entry_info: &ReplicaEntryInfoV2) -> Result<(), GeyserPluginError> {
+        if let Err(err) = self
+            .sender
+            .send(DbWorkItem::UpdateEntry(Box::new(UpdateEntryRequest {
+                entry_info: DbEntryInfo::from(entry_info),
+            },
+            ))) {
+            return Err(GeyserPluginError::EntryUpdateError {
+                msg: format!("Failed to update the entry , error: {:?}", err),
+            });
+        }
+        Ok(())
+    }
+
     pub fn update_block_metadata(
         &mut self,
         block_info: &ReplicaBlockInfoV3,
@@ -1409,7 +1445,7 @@ impl PostgresClientBuilder {
                 }
                 false => None,
             };
-        let entry_starting_slot = 0;//on_load_client.get_highest_entry_slot()?;
+        let entry_starting_slot = on_load_client.get_highest_entry_slot()?;
         let untrusted_entry_starting_slot = on_load_client.get_highest_untrusted_entry_slot()?;
 
         ParallelPostgresClient::new(config).map(|v| (v, batch_optimize_by_skiping_older_slots, Some(entry_starting_slot), Some(untrusted_entry_starting_slot)))
@@ -1479,7 +1515,7 @@ impl SequencePostgresClient {
         Ok(Self {
             worker: Some(worker),
             exit_worker,
-            sender
+            sender,
         })
     }
 

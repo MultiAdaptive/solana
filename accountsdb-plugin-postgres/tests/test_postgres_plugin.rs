@@ -273,7 +273,7 @@ fn test_postgres_plugin() {
             .as_ref()
             .unwrap()[0],
     )
-    .unwrap();
+        .unwrap();
     let mut contents = String::new();
     file.read_to_string(&mut contents).unwrap();
     let plugin_config: GeyserPluginPostgresConfig = serde_json::from_str(&contents).unwrap();

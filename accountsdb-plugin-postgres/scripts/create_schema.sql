@@ -235,6 +235,22 @@ CREATE TABLE spl_token_mint_index
 CREATE INDEX spl_token_mint_index_mint_key ON spl_token_mint_index (mint_key);
 CREATE UNIQUE INDEX spl_token_mint_index_mint_pair ON spl_token_mint_index (mint_key, account_key);
 
+
+CREATE TABLE IF NOT EXISTS entry
+(
+    id           bigserial PRIMARY KEY,
+    slot         BIGINT    NOT NULL,
+    entry_index  BIGINT    NOT NULL,
+    num_hashes   BIGINT    NOT NULL,
+    entry        BYTEA,
+    executed_transaction_count   BIGINT    NOT NULL,
+    starting_transaction_index   BIGINT    NOT NULL,
+    updated_on   TIMESTAMP NOT NULL
+);
+
+CREATE INDEX entry_slot_entry_index ON entry (slot, entry_index);
+
+
 CREATE TABLE IF NOT EXISTS untrusted_entry
 (
     id           bigserial PRIMARY KEY,

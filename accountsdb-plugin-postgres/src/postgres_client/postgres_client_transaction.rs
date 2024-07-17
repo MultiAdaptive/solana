@@ -1,11 +1,11 @@
 /// Module responsible for handling persisting transaction data to the PostgreSQL
 /// database.
 use {
+    chrono::Utc,
     crate::{
         geyser_plugin_postgres::{GeyserPluginPostgresConfig, GeyserPluginPostgresError},
         postgres_client::{DbWorkItem, ParallelPostgresClient, SimplePostgresClient},
     },
-    chrono::Utc,
     log::*,
     postgres::{Client, Statement},
     postgres_types::{FromSql, ToSql},
@@ -16,8 +16,8 @@ use {
     solana_sdk::{
         instruction::CompiledInstruction,
         message::{
-            v0::{self, LoadedAddresses, MessageAddressTableLookup},
-            Message, MessageHeader, SanitizedMessage,
+            Message,
+            MessageHeader, SanitizedMessage, v0::{self, LoadedAddresses, MessageAddressTableLookup},
         },
         transaction::TransactionError,
     },
@@ -657,7 +657,6 @@ impl ParallelPostgresClient {
 #[cfg(test)]
 pub(crate) mod tests {
     use {
-        super::*,
         solana_account_decoder::parse_token::UiTokenAmount,
         solana_sdk::{
             hash::Hash,
@@ -670,6 +669,7 @@ pub(crate) mod tests {
             },
         },
         solana_transaction_status::InnerInstruction,
+        super::*,
     };
 
     fn check_compiled_instruction_equality(
@@ -1393,7 +1393,7 @@ pub(crate) mod tests {
             Some(true),
             SimpleAddressLoader::Disabled,
         )
-        .unwrap();
+            .unwrap();
 
         let transaction_status_meta = build_transaction_status_meta();
         let transaction_info = ReplicaTransactionInfoV2 {
@@ -1438,7 +1438,7 @@ pub(crate) mod tests {
                 readonly: vec![Pubkey::new_unique(), Pubkey::new_unique()],
             }),
         )
-        .unwrap();
+            .unwrap();
 
         let transaction_status_meta = build_transaction_status_meta();
         let transaction_info = ReplicaTransactionInfoV2 {

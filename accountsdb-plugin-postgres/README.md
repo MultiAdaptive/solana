@@ -1,6 +1,7 @@
 The `solana-geyser-plugin-postgres` crate implements a plugin storing
 account data to a PostgreSQL database to illustrate how a plugin can be
-developed to work with Solana validators using the [Plugin Framework](https://docs.solana.com/developing/plugins/geyser-plugins).
+developed to work with Solana validators using
+the [Plugin Framework](https://docs.solana.com/developing/plugins/geyser-plugins).
 
 ### Configuration File Format
 
@@ -27,7 +28,8 @@ configuration file looks like the following:
 The `host`, `user`, `password`, `dbname` and `port` control the PostgreSQL configuration
 information. The default schema name is **public**.
 For more advanced connection options, please use the
-`connection_str` field. Please see [Rust Postgres Configuration](https://docs.rs/postgres/0.19.2/postgres/config/struct.Config.html).
+`connection_str` field. Please
+see [Rust Postgres Configuration](https://docs.rs/postgres/0.19.2/postgres/config/struct.Config.html).
 
 To improve the throughput to the database, the plugin supports connection pooling
 using multiple threads, each maintaining a connection to the PostgreSQL database.
@@ -129,6 +131,7 @@ wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo apt-
 sudo apt-get update
 sudo apt-get -y install postgresql-16
 ```
+
 #### Control the Database Access
 
 Modify the pg_hba.conf as necessary to grant the plugin to access the database.
@@ -266,7 +269,6 @@ The following are the tables in the Postgres database
 | slot          | Slot metadata           |
 | transaction   | Transaction data        |
 | account_audit | Account historical data |
-
 
 ### Performance Considerations
 
