@@ -247,7 +247,7 @@ pub trait PostgresClient {
         block_info: UpdateBlockMetadataRequest,
     ) -> Result<(), GeyserPluginError>;
 
-    fn log_entry(&mut self, entry: LogEntryRequest) -> Result<(), GeyserPluginError>;
+    fn update_untrusted_entry(&mut self, untrusted_entry: UpdateUntrustedEntryRequest) -> Result<(), GeyserPluginError>;
 }
 
 impl SimplePostgresClient {
@@ -983,8 +983,8 @@ impl PostgresClient for SimplePostgresClient {
         self.update_block_metadata_impl(block_info)
     }
 
-    fn log_entry(&mut self, log_entry_request: LogEntryRequest) -> Result<(), GeyserPluginError> {
-        self.log_entry_impl(log_entry_request)
+    fn update_untrusted_entry(&mut self, untrusted_entry: UpdateUntrustedEntryRequest) -> Result<(), GeyserPluginError> {
+        self.update_untrusted_entry_impl(untrusted_entry)
     }
 }
 
@@ -1003,7 +1003,7 @@ pub struct UpdateBlockMetadataRequest {
     pub block_info: DbBlockInfo,
 }
 
-pub struct LogEntryRequest {
+pub struct UpdateUntrustedEntryRequest {
     pub entry: UntrustedEntry,
 }
 
@@ -1013,7 +1013,7 @@ enum DbWorkItem {
     UpdateSlot(Box<UpdateSlotRequest>),
     LogTransaction(Box<LogTransactionRequest>),
     UpdateBlockMetadata(Box<UpdateBlockMetadataRequest>),
-    LogEntry(Box<LogEntryRequest>),
+    UpdateUntrustedEntry(Box<UpdateUntrustedEntryRequest>),
 }
 
 impl PostgresClientWorker {
@@ -1090,8 +1090,8 @@ impl PostgresClientWorker {
                             }
                         }
                     }
-                    DbWorkItem::LogEntry(entry) => {
-                        if let Err(err) = self.client.log_entry(*entry) {
+                    DbWorkItem::UpdateUntrustedEntry(entry) => {
+                        if let Err(err) = self.client.update_untrusted_entry(*entry) {
                             error!("Failed to log entry : ({})", err);
                             if panic_on_db_errors {
                                 abort();
@@ -1296,7 +1296,7 @@ impl ParallelPostgresClient {
         Ok(())
     }
 
-    pub fn log_entry(&mut self, entry: &UntrustedEntry) -> Result<(), GeyserPluginError> {
+    pub fn update_untrusted_entry(&mut self, entry: &UntrustedEntry) -> Result<(), GeyserPluginError> {
         let entry = UntrustedEntry {
             entries: entry.entries.clone(),
             slot: entry.slot,
@@ -1305,10 +1305,10 @@ impl ParallelPostgresClient {
         };
         if let Err(err) = self
             .sender
-            .send(DbWorkItem::LogEntry(Box::new(LogEntryRequest { entry })))
+            .send(DbWorkItem::UpdateUntrustedEntry(Box::new(UpdateUntrustedEntryRequest { entry })))
         {
-            return Err(GeyserPluginError::EntryUpdateError {
-                msg: format!("Failed to update the entry , error: {:?}", err),
+            return Err(GeyserPluginError::UntrustedEntryUpdateError {
+                msg: format!("Failed to update the untrusted entry , error: {:?}", err),
             });
         }
         Ok(())

@@ -3,7 +3,7 @@
 use {
     crate::{
         geyser_plugin_postgres::{GeyserPluginPostgresConfig, GeyserPluginPostgresError},
-        postgres_client::{LogEntryRequest, SimplePostgresClient},
+        postgres_client::{UpdateUntrustedEntryRequest, SimplePostgresClient},
     },
     chrono::Utc,
     log::*,
@@ -11,6 +11,7 @@ use {
     solana_geyser_plugin_interface::geyser_plugin_interface::GeyserPluginError,
     solana_ledger::blockstore,
 };
+use solana_entry::entry::UntrustedEntry;
 
 impl SimplePostgresClient {
     pub(crate) fn build_entry_upsert_statement(
@@ -36,9 +37,9 @@ impl SimplePostgresClient {
         }
     }
 
-    pub(crate) fn log_entry_impl(
+    pub(crate) fn update_untrusted_entry_impl(
         &mut self,
-        log_entry_request: LogEntryRequest,
+        untrusted_entry: UpdateUntrustedEntryRequest,
     ) -> Result<(), GeyserPluginError> {
         let client = self.client.get_mut().unwrap();
         let statement = &client.log_entry_stmt;
@@ -47,7 +48,7 @@ impl SimplePostgresClient {
         let updated_on = Utc::now().naive_utc();
 
         // entry to shred, 64 entry ~= 8 shred
-        let entry = &log_entry_request.entry;
+        let entry=untrusted_entry.entry;
         let entries = &entry.entries;
 
         let (slot, parent_slot, is_full_slot) = (entry.slot, entry.parent_slot, entry.is_full_slot);

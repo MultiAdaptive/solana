@@ -293,6 +293,10 @@ pub enum GeyserPluginError {
     #[error("Error updating entry. Error message: ({msg})")]
     EntryUpdateError { msg: String },
 
+    /// Error when updating the untrusted entry.
+    #[error("Error updating untrusted entry. Error message: ({msg})")]
+    UntrustedEntryUpdateError { msg: String },
+
     /// Error when updating the merkle tree root.
     #[error("Error updating smt root. Error message: ({msg})")]
     SMTUpdateError { msg: String },
@@ -417,8 +421,7 @@ pub trait GeyserPlugin: Any + Send + Sync + std::fmt::Debug {
 
     /// Called when an entry is executed.
     #[allow(unused_variables)]
-    // fn notify_entry(&mut self, entry: &UntrustedEntry) -> Result<()> {
-        fn notify_entry(&mut self, entry: ReplicaEntryInfoVersions) -> Result<()> {
+    fn notify_entry(&mut self, entry: ReplicaEntryInfoVersions) -> Result<()> {
         Ok(())
     }
 
@@ -447,6 +450,11 @@ pub trait GeyserPlugin: Any + Send + Sync + std::fmt::Debug {
     /// entry data, return true.
     fn entry_notifications_enabled(&self) -> bool {
         false
+    }
+
+    #[allow(unused_variables)]
+    fn notify_untrusted_entry(&mut self, entry: &UntrustedEntry) -> Result<()> {
+        Ok(())
     }
 
     fn last_insert_entry(&self) -> u64 { 0 }

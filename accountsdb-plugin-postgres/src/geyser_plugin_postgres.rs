@@ -245,7 +245,6 @@ impl GeyserPlugin for GeyserPluginPostgres {
     ) -> Result<()> {
         // skip updating account on startup of batch_optimize_by_skiping_older_slots
         // is configured
-        // println!("****************update_account");
 
         if is_startup
             && self
@@ -360,8 +359,6 @@ impl GeyserPlugin for GeyserPluginPostgres {
     }
 
     fn update_slot_status(&mut self, slot: u64, parent: Option<u64>, status: SlotStatus) -> Result<()> {
-        // println!("****************update_slot_status");
-
         info!("Updating slot {:?} at with status {:?}", slot, status);
 
         match &mut self.client {
@@ -387,8 +384,6 @@ impl GeyserPlugin for GeyserPluginPostgres {
     }
 
     fn notify_end_of_startup(&mut self) -> Result<()> {
-        // println!("****************notify_end_of_startup");
-
         info!("Notifying the end of startup for accounts notifications");
         match &mut self.client {
             None => {
@@ -416,8 +411,6 @@ impl GeyserPlugin for GeyserPluginPostgres {
         transaction_info: ReplicaTransactionInfoVersions,
         slot: u64,
     ) -> Result<()> {
-        // println!("****************notify_transaction");
-
         match &mut self.client {
             None => {
                 return Err(GeyserPluginError::Custom(Box::new(
@@ -459,8 +452,6 @@ impl GeyserPlugin for GeyserPluginPostgres {
     }
 
     fn notify_block_metadata(&mut self, block_info: ReplicaBlockInfoVersions) -> Result<()> {
-        // println!("****************notify_block_metadata");
-
         match &mut self.client {
             None => {
                 return Err(GeyserPluginError::Custom(Box::new(
@@ -495,16 +486,41 @@ impl GeyserPlugin for GeyserPluginPostgres {
         Ok(())
     }
 
-    // fn notify_entry(&mut self, entry: &UntrustedEntry) -> Result<()> {
         fn notify_entry(&mut self, entry: ReplicaEntryInfoVersions) -> Result<()> {
         // println!("****************notify_entry: {}", ReplicaEntryInfoVersions::V0_0_2(entry));
 
-        match entry {
-            ReplicaEntryInfoVersions::V0_0_2(addr) => println!("notify_entry entry: {:?}", addr),
-            _ => {}
-        }
+        // match entry {
+        //     ReplicaEntryInfoVersions::V0_0_2(addr) => println!("notify_entry entry: {:?}", addr),
+        //     _ => {}
+        // }
 
 
+        // match &mut self.client {
+        //     None => {
+        //         return Err(GeyserPluginError::Custom(Box::new(
+        //             GeyserPluginPostgresError::DataStoreConnectionError {
+        //                 msg: "There is no connection to the PostgreSQL database.".to_string(),
+        //             },
+        //         )));
+        //     }
+        //     // Some(client) => {
+        //     //     let result = client.log_entry(entry);
+        //     //     if let Err(err) = result {
+        //     //         return Err(GeyserPluginError::EntryUpdateError {
+        //     //             msg: format!(
+        //     //                 "Failed to persist entry to the PostgreSQL database. Error: {:?}",
+        //     //                 err
+        //     //             ),
+        //     //         });
+        //     //     }
+        //     // }
+        // }
+
+        Ok(())
+    }
+
+
+    fn notify_untrusted_entry(&mut self, entry: &UntrustedEntry) -> Result<()> {
         match &mut self.client {
             None => {
                 return Err(GeyserPluginError::Custom(Box::new(
@@ -514,27 +530,29 @@ impl GeyserPlugin for GeyserPluginPostgres {
                 )));
             }
             Some(client) => {
-                // let result = client.log_entry(entry);
-                // if let Err(err) = result {
-                //     return Err(GeyserPluginError::EntryUpdateError {
-                //         msg: format!(
-                //             "Failed to persist entry to the PostgreSQL database. Error: {:?}",
-                //             err
-                //         ),
-                //     });
-                // }
+                let result = client.update_untrusted_entry(entry);
+                if let Err(err) = result {
+                    return Err(GeyserPluginError::EntryUpdateError {
+                        msg: format!(
+                            "Failed to persist entry to the PostgreSQL database. Error: {:?}",
+                            err
+                        ),
+                    });
+                }
             }
         }
 
         Ok(())
     }
 
+
+
+
+
     /// Check if the plugin is interested in account data
     /// Default is true -- if the plugin is not interested in
     /// account data, please return false.
     fn account_data_notifications_enabled(&self) -> bool {
-        // println!("****************account_data_notifications_enabled");
-
         self.accounts_selector
             .as_ref()
             .map_or_else(|| false, |selector| selector.is_enabled())
@@ -542,8 +560,6 @@ impl GeyserPlugin for GeyserPluginPostgres {
 
     /// Check if the plugin is interested in transaction data
     fn transaction_notifications_enabled(&self) -> bool {
-        // println!("****************transaction_notifications_enabled");
-
         self.transaction_selector
             .as_ref()
             .map_or_else(|| false, |selector| selector.is_enabled())
@@ -551,16 +567,12 @@ impl GeyserPlugin for GeyserPluginPostgres {
 
     /// Check if the plugin is interested in shred data
     fn entry_notifications_enabled(&self) -> bool {
-        // println!("****************entry_notifications_enabled");
-
         self.entry_selector
             .as_ref()
             .map_or_else(|| false, |selector| selector.is_enabled())
     }
 
     fn last_insert_entry(&self) -> u64 {
-        // println!("****************last_insert_entry");
-
         self.entry_starting_slot.unwrap()
     }
 }
