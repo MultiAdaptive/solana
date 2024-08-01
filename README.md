@@ -105,11 +105,11 @@ $ open target/cov/lcov-local/index.html
 
 
 ```shell
-psql -U solana -p 5432 -h localhost -d solana -f solana-accountsdb-plugin-postgres/scripts/create_schema.sql
+psql -U solana -p 5432 -h localhost -d solana -f accountsdb-plugin-postgres/scripts/create_schema.sql
 ```
 
 ```shell
-./target/release/solana-test-validator --geyser-plugin-config ./solana-accountsdb-plugin-postgres/scripts/geyser.json
+./target/release/solana-test-validator --geyser-plugin-config ./accountsdb-plugin-postgres/scripts/geyser.json
 ```
 
 Why coverage? While most see coverage as a code quality metric, we see it primarily as a developer
