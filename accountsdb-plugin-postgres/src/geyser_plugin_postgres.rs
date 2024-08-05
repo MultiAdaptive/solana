@@ -18,10 +18,12 @@ use {
     std::{fs::File, io::Read},
     thiserror::Error,
 };
+use crate::postgres_client::SequencePostgresClient;
 
 #[derive(Default)]
 pub struct GeyserPluginPostgres {
-    client: Option<ParallelPostgresClient>,
+    parallel_client: Option<ParallelPostgresClient>,
+    sequence_client: Option<SequencePostgresClient>,
     accounts_selector: Option<AccountsSelector>,
     transaction_selector: Option<TransactionSelector>,
     batch_starting_slot: Option<u64>,
@@ -197,10 +199,13 @@ impl GeyserPlugin for GeyserPluginPostgres {
                 }
             })?;
 
-        let (client, batch_optimize_by_skiping_older_slots) =
-            PostgresClientBuilder::build_pararallel_postgres_client(&config)?;
-        self.client = Some(client);
+        let (parallel_client, batch_optimize_by_skiping_older_slots) =
+            PostgresClientBuilder::build_parallel_postgres_client(&config)?;
+        self.parallel_client = Some(parallel_client);
         self.batch_starting_slot = batch_optimize_by_skiping_older_slots;
+
+        let sequence_client = PostgresClientBuilder::build_sequence_postgres_client(&config)?;
+        self.sequence_client = Some(sequence_client);
 
         Ok(())
     }
@@ -208,7 +213,14 @@ impl GeyserPlugin for GeyserPluginPostgres {
     fn on_unload(&mut self) {
         info!("Unloading plugin: {:?}", self.name());
 
-        match &mut self.client {
+        match &mut self.parallel_client {
+            None => {}
+            Some(client) => {
+                client.join().unwrap();
+            }
+        }
+
+        match &mut self.sequence_client {
             None => {}
             Some(client) => {
                 client.join().unwrap();
@@ -217,7 +229,7 @@ impl GeyserPlugin for GeyserPluginPostgres {
     }
 
     fn update_account(
-        &self,
+        &mut self,
         account: ReplicaAccountInfoVersions,
         slot: u64,
         is_startup: bool,
@@ -271,7 +283,8 @@ impl GeyserPlugin for GeyserPluginPostgres {
                     self.accounts_selector.as_ref().unwrap()
                 );
 
-                match &self.client {
+                // match parallel client
+                match &self.parallel_client {
                     None => {
                         return Err(GeyserPluginError::Custom(Box::new(
                             GeyserPluginPostgresError::DataStoreConnectionError {
@@ -283,7 +296,9 @@ impl GeyserPlugin for GeyserPluginPostgres {
                     Some(client) => {
                         let mut measure_update =
                             Measure::start("geyser-plugin-postgres-update-account-client");
-                        let result = { client.update_account(account, slot, is_startup) };
+                        let result = {
+                            client.update_account(account, slot, is_startup)
+                        };
                         measure_update.stop();
 
                         inc_new_counter_debug!(
@@ -293,6 +308,28 @@ impl GeyserPlugin for GeyserPluginPostgres {
                             100000
                         );
 
+                        if let Err(err) = result {
+                            return Err(GeyserPluginError::AccountsUpdateError {
+                                msg: format!("Failed to persist the update of account to the PostgreSQL database. Error: {:?}", err)
+                            });
+                        }
+                    }
+                }
+
+                // match sequence client
+                match &mut self.sequence_client {
+                    None => {
+                        return Err(GeyserPluginError::Custom(Box::new(
+                            GeyserPluginPostgresError::DataStoreConnectionError {
+                                msg: "There is no connection to the PostgreSQL database."
+                                    .to_string(),
+                            },
+                        )));
+                    }
+                    Some(client) => {
+                        let result = {
+                            client.update_account(account, slot, is_startup)
+                        };
                         if let Err(err) = result {
                             return Err(GeyserPluginError::AccountsUpdateError {
                                 msg: format!("Failed to persist the update of account to the PostgreSQL database. Error: {:?}", err)
@@ -318,7 +355,7 @@ impl GeyserPlugin for GeyserPluginPostgres {
     fn update_slot_status(&self, slot: u64, parent: Option<u64>, status: SlotStatus) -> Result<()> {
         info!("Updating slot {:?} at with status {:?}", slot, status);
 
-        match &self.client {
+        match &self.parallel_client {
             None => {
                 return Err(GeyserPluginError::Custom(Box::new(
                     GeyserPluginPostgresError::DataStoreConnectionError {
@@ -340,9 +377,11 @@ impl GeyserPlugin for GeyserPluginPostgres {
         Ok(())
     }
 
-    fn notify_end_of_startup(&self) -> Result<()> {
+    fn notify_end_of_startup(&mut self) -> Result<()> {
         info!("Notifying the end of startup for accounts notifications");
-        match &self.client {
+
+        // match parallel client
+        match &self.parallel_client {
             None => {
                 return Err(GeyserPluginError::Custom(Box::new(
                     GeyserPluginPostgresError::DataStoreConnectionError {
@@ -360,6 +399,26 @@ impl GeyserPlugin for GeyserPluginPostgres {
                 }
             }
         }
+
+        // match sequence client
+        match &mut self.sequence_client {
+            None => {
+                return Err(GeyserPluginError::Custom(Box::new(
+                    GeyserPluginPostgresError::DataStoreConnectionError {
+                        msg: "There is no connection to the PostgreSQL database.".to_string(),
+                    },
+                )));
+            }
+            Some(client) => {
+                let result = client.notify_end_of_startup();
+
+                if let Err(err) = result {
+                    return Err(GeyserPluginError::EndOfStartupNotifyError {
+                        msg: format!("Failed to notify the end of startup for accounts notifications. Error: {:?}", err)
+                    });
+                }
+            }
+        }
         Ok(())
     }
 
@@ -368,7 +427,7 @@ impl GeyserPlugin for GeyserPluginPostgres {
         transaction_info: ReplicaTransactionInfoVersions,
         slot: u64,
     ) -> Result<()> {
-        match &self.client {
+        match &self.parallel_client {
             None => {
                 return Err(GeyserPluginError::Custom(Box::new(
                     GeyserPluginPostgresError::DataStoreConnectionError {
@@ -409,7 +468,7 @@ impl GeyserPlugin for GeyserPluginPostgres {
     }
 
     fn notify_block_metadata(&self, block_info: ReplicaBlockInfoVersions) -> Result<()> {
-        match &self.client {
+        match &self.parallel_client {
             None => {
                 return Err(GeyserPluginError::Custom(Box::new(
                     GeyserPluginPostgresError::DataStoreConnectionError {

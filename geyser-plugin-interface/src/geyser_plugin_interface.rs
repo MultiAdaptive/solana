@@ -287,6 +287,18 @@ pub enum GeyserPluginError {
     /// Error when updating the transaction.
     #[error("Error updating transaction. Error message: ({msg})")]
     TransactionUpdateError { msg: String },
+
+    /// Error when updating the block.
+    #[error("Error updating block. Error message: ({msg})")]
+    BlockUpdateError { msg: String },
+
+    /// Error when notify end of startup
+    #[error("Error notifying end of startup. Error message: ({msg})")]
+    EndOfStartupNotifyError { msg: String },
+
+    /// Error when updating the merkle tree root.
+    #[error("Error updating smt root. Error message: ({msg})")]
+    SMTUpdateError { msg: String },
 }
 
 /// The current status of a slot
@@ -372,7 +384,7 @@ pub trait GeyserPlugin: Any + Send + Sync + std::fmt::Debug {
     /// the account is updated during transaction processing.
     #[allow(unused_variables)]
     fn update_account(
-        &self,
+        &mut self,
         account: ReplicaAccountInfoVersions,
         slot: Slot,
         is_startup: bool,
@@ -381,7 +393,7 @@ pub trait GeyserPlugin: Any + Send + Sync + std::fmt::Debug {
     }
 
     /// Called when all accounts are notified of during startup.
-    fn notify_end_of_startup(&self) -> Result<()> {
+    fn notify_end_of_startup(&mut self) -> Result<()> {
         Ok(())
     }
 
