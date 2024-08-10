@@ -4,8 +4,7 @@ mod postgres_client_account_index;
 mod postgres_client_block_metadata;
 mod postgres_client_transaction;
 
-use std::path::Path;
-use std::sync::RwLock;
+
 /// A concurrent implementation for writing accounts into the PostgreSQL in parallel.
 use {
     crate::{
@@ -37,7 +36,6 @@ use {
     },
     tokio_postgres::types,
 };
-use solana_sdk::pubkey::Pubkey;
 
 /// The maximum asynchronous requests allowed in the channel to avoid excessive
 /// memory usage. The downside -- calls after this threshold is reached can get blocked.
