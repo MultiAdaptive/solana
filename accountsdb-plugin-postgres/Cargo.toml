@@ -1,13 +1,14 @@
 [package]
 authors = ["Solana Maintainers <maintainers@solana.foundation>"]
-edition = "2021"
 name = "solana-geyser-plugin-postgres"
 description = "The Solana AccountsDb plugin for PostgreSQL database."
-version = "1.18.15"
 repository = "https://github.com/solana-labs/solana-accountsdb-plugin-postgres"
-license = "Apache-2.0"
-homepage = "https://solana.com/"
 documentation = "https://docs.rs/solana-validator"
+version = { workspace = true }
+homepage = { workspace = true }
+license = { workspace = true }
+edition = { workspace = true }
+
 
 [lib]
 crate-type = ["cdylib", "rlib"]
@@ -32,14 +33,8 @@ solana-metrics = { workspace = true }
 solana-runtime = { workspace = true }
 solana-sdk = { workspace = true }
 solana-transaction-status = { workspace = true }
-solana-entry = { workspace = true }
-solana-ledger = { workspace = true }
-solana-smt = { workspace = true }
 thiserror = { workspace = true }
 tokio-postgres = { version = "0.7.10" }
-sparse-merkle-tree = { git = "https://github.com/MultiAdaptive/sparse-merkle-tree.git", commit = "1c53fd1bb27d8649ce1f2260af6fa43f7aee7436" }
-blake3 = { workspace = true }
-hex = { workspace = true }
 
 
 [dev-dependencies]
@@ -55,12 +50,6 @@ solana-net-utils = { workspace = true }
 solana-streamer = { workspace = true }
 tempfile = { workspace = true }
 
-
-
 [package.metadata.docs.rs]
 targets = ["x86_64-unknown-linux-gnu"]
 
-[dependencies.rocksdb]
-version = "0.21.0"
-default-features = false
-features = ["lz4"]

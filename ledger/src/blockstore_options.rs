@@ -161,11 +161,6 @@ impl ShredStorageType {
     /// ledger_path.
     ///
     /// None will be returned if the ShredStorageType cannot be inferred.
-    // In ledger_path:
-    // 1.  rocksdb directory not exists, rocksdb_fifo directory not exists, return None"
-    // 2.  rocksdb directory exists, rocksdb_fifo directory not exist, return SherdStorageType:: RocksLevel
-    // 3.  rocksdb directory not exist, rocksdb_fifo directory exists, return ShredStorageType:: RocksFifo
-    // 4.  rocksdb directory exists, rocksdb_fifo directory exists, return None"
     pub fn from_ledger_path(
         ledger_path: &Path,
         max_fifo_shred_storage_size: Option<u64>,

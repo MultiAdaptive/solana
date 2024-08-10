@@ -19,9 +19,9 @@ CREATE TABLE account
     updated_on    TIMESTAMP NOT NULL
 );
 
-CREATE INDEX account_owner ON account (owner);
+CREATE INDEX index_account_owner ON account (owner);
 
-CREATE INDEX account_slot ON account (slot);
+CREATE INDEX index_account_slot ON account (slot);
 
 -- The table storing slot information
 CREATE TABLE slot
@@ -33,15 +33,19 @@ CREATE TABLE slot
     updated_on TIMESTAMP   NOT NULL
 );
 
+CREATE INDEX index_slot_parent ON slot (parent);
 
-CREATE TABLE merkle_tree_proof
+CREATE TABLE merkle_tree
 (
-    slot       BIGINT    NOT NULL,
-    root_hash  VARCHAR(256),
+    id         bigserial PRIMARY KEY,
+    slot       BIGINT    UNIQUE NOT NULL,
+    root_hash  VARCHAR(256) DEFAULT '',
+    hash_account       VARCHAR(256)  DEFAULT '',
+    transaction_number INT           DEFAULT 0,
     updated_on TIMESTAMP NOT NULL
 );
-
-CREATE INDEX merkle_tree_proof_slot_index ON merkle_tree_proof (slot);
+CREATE INDEX index_merkle_tree_root_hash ON merkle_tree (root_hash);
+CREATE INDEX index_merkle_tree_hash_account ON merkle_tree (hash_account);
 
 -- Types for Transactions
 
@@ -188,6 +192,7 @@ CREATE TYPE "LoadedMessageV0" AS
 -- The table storing transactions
 CREATE TABLE transaction
 (
+    id                bigserial PRIMARY KEY,
     slot              BIGINT    NOT NULL,
     signature         BYTEA     NOT NULL,
     is_vote           BOOL      NOT NULL,
@@ -197,16 +202,20 @@ CREATE TABLE transaction
     signatures        BYTEA[],
     message_hash      BYTEA,
     meta              "TransactionStatusMeta",
+    index             BIGINT    NOT NULL,
     write_version     BIGINT,
     updated_on        TIMESTAMP NOT NULL,
-    index             BIGINT    NOT NULL,
-    CONSTRAINT transaction_pk PRIMARY KEY (slot, signature)
+    CONSTRAINT unique_transaction_slot_signature UNIQUE (slot, signature)
 );
+
+CREATE INDEX index_transaction_slot ON transaction (slot);
+CREATE INDEX index_transaction_index ON transaction (index);
 
 -- The table storing block metadata
 CREATE TABLE block
 (
-    slot         BIGINT PRIMARY KEY,
+    id           bigserial PRIMARY KEY,
+    slot         BIGINT UNIQUE NOT NULL,
     blockhash    VARCHAR(44),
     rewards      "Reward"[],
     block_time   BIGINT,
@@ -214,28 +223,34 @@ CREATE TABLE block
     updated_on   TIMESTAMP NOT NULL
 );
 
+CREATE INDEX index_block_blockhash ON block (blockhash);
+CREATE INDEX index_block_block_height ON block (block_height);
+
 -- The table storing spl token owner to account indexes
 CREATE TABLE spl_token_owner_index
 (
+    id           bigserial PRIMARY KEY,
     owner_key   BYTEA  NOT NULL,
     account_key BYTEA  NOT NULL,
     slot        BIGINT NOT NULL
 );
 
-CREATE INDEX spl_token_owner_index_owner_key ON spl_token_owner_index (owner_key);
-CREATE UNIQUE INDEX spl_token_owner_index_owner_pair ON spl_token_owner_index (owner_key, account_key);
+CREATE INDEX index_spl_token_owner_index_owner_key ON spl_token_owner_index (owner_key);
+CREATE UNIQUE INDEX unique_spl_token_owner_index_owner_pair ON spl_token_owner_index (owner_key, account_key);
+CREATE INDEX index_spl_token_owner_index_slot ON spl_token_owner_index (slot);
 
 -- The table storing spl mint to account indexes
 CREATE TABLE spl_token_mint_index
 (
+    id          bigserial PRIMARY KEY,
     mint_key    BYTEA  NOT NULL,
     account_key BYTEA  NOT NULL,
     slot        BIGINT NOT NULL
 );
 
-CREATE INDEX spl_token_mint_index_mint_key ON spl_token_mint_index (mint_key);
-CREATE UNIQUE INDEX spl_token_mint_index_mint_pair ON spl_token_mint_index (mint_key, account_key);
-
+CREATE INDEX index_spl_token_mint_index_mint_key ON spl_token_mint_index (mint_key);
+CREATE UNIQUE INDEX unique_spl_token_mint_index_mint_pair ON spl_token_mint_index (mint_key, account_key);
+CREATE INDEX index_spl_token_mint_index_slot ON spl_token_mint_index (slot);
 
 CREATE TABLE IF NOT EXISTS entry
 (
@@ -249,8 +264,8 @@ CREATE TABLE IF NOT EXISTS entry
     updated_on   TIMESTAMP NOT NULL
 );
 
-CREATE INDEX entry_slot_entry_index ON entry (slot, entry_index);
-
+CREATE INDEX index_entry_slot_entry_index ON entry (slot, entry_index);
+CREATE INDEX index_entry_slot ON entry (slot);
 
 CREATE TABLE IF NOT EXISTS untrusted_entry
 (
@@ -263,9 +278,9 @@ CREATE TABLE IF NOT EXISTS untrusted_entry
     updated_on   TIMESTAMP NOT NULL
 );
 
-CREATE INDEX untrusted_entry_slot_entry_index ON untrusted_entry (slot, entry_index);
-
-
+CREATE INDEX index_untrusted_entry_slot_entry_index ON untrusted_entry (slot, entry_index);
+CREATE INDEX index_untrusted_entry_slot ON untrusted_entry (slot);
+CREATE INDEX index_untrusted_entry_parent_slot ON untrusted_entry (parent_slot);
 
 /**
  * The following is for keeping historical data for accounts and is not required for plugin to work.
@@ -286,44 +301,26 @@ CREATE TABLE account_audit
     updated_on    TIMESTAMP NOT NULL
 );
 
-CREATE INDEX account_audit_account_key ON account_audit (pubkey, write_version);
+CREATE INDEX index_account_audit_pubkey_write_version ON account_audit (pubkey, write_version);
 
-CREATE INDEX account_audit_pubkey_slot ON account_audit (pubkey, slot);
+CREATE INDEX index_account_audit_pubkey_slot ON account_audit (pubkey, slot);
 
-CREATE FUNCTION account_modify() RETURNS TRIGGER AS
-$account_modify$
-BEGIN
-    INSERT INTO account_audit (pubkey, owner, lamports, slot, executable,
-                               rent_epoch, data, write_version, updated_on, txn_signature)
-    VALUES (NEW.pubkey, NEW.owner, NEW.lamports, NEW.slot,
-            NEW.executable, NEW.rent_epoch, NEW.data,
-            NEW.write_version, NEW.updated_on, NEW.txn_signature);
+CREATE INDEX index_account_audit_pubkey_owner ON account_audit (pubkey, owner);
 
-    RETURN NEW;
-END;
-$account_modify$ language plpgsql;
-
-CREATE TRIGGER account_modify_trigger
-    AFTER INSERT OR UPDATE OR DELETE
-    ON account
-    FOR EACH ROW
-EXECUTE PROCEDURE account_modify();
+CREATE INDEX index_account_audit_slot ON account_audit (slot);
 
 
-CREATE TABLE IF NOT EXISTS brief
-(
-    id                 bigserial PRIMARY KEY,
-    slot               BIGINT UNIQUE NOT NULL,
-    root_hash          VARCHAR(256)  NOT NULL,
-    hash_account       VARCHAR(256)  NOT NULL,
-    transaction_number INT           NOT NULL,
-    updated_on         timestamp default current_timestamp
-);
+CREATE FUNCTION audit_account_update() RETURNS trigger AS $audit_account_update$
+    BEGIN
+		INSERT INTO account_audit (pubkey, owner, lamports, slot, executable,
+		                           rent_epoch, data, write_version, updated_on, txn_signature)
+            VALUES (OLD.pubkey, OLD.owner, OLD.lamports, OLD.slot,
+                    OLD.executable, OLD.rent_epoch, OLD.data,
+                    OLD.write_version, OLD.updated_on, OLD.txn_signature);
+        RETURN NEW;
+    END;
 
+$audit_account_update$ LANGUAGE plpgsql;
 
-CREATE TABLE IF NOT EXISTS genesis
-(
-    id           bigserial PRIMARY KEY,
-    genesis_hash VARCHAR(64) UNIQUE NOT NULL,
-    updated_on   timestamp default current_timestamp
-);
+CREATE TRIGGER account_update_trigger AFTER UPDATE OR DELETE ON account
+    FOR EACH ROW EXECUTE PROCEDURE audit_account_update();

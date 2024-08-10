@@ -1,11 +1,11 @@
 /// Module responsible for handling persisting transaction data to the PostgreSQL
 /// database.
 use {
-    chrono::Utc,
     crate::{
         geyser_plugin_postgres::{GeyserPluginPostgresConfig, GeyserPluginPostgresError},
         postgres_client::{DbWorkItem, ParallelPostgresClient, SimplePostgresClient},
     },
+    chrono::Utc,
     log::*,
     postgres::{Client, Statement},
     postgres_types::{FromSql, ToSql},
@@ -16,8 +16,8 @@ use {
     solana_sdk::{
         instruction::CompiledInstruction,
         message::{
-            Message,
-            MessageHeader, SanitizedMessage, v0::{self, LoadedAddresses, MessageAddressTableLookup},
+            v0::{self, LoadedAddresses, MessageAddressTableLookup},
+            Message, MessageHeader, SanitizedMessage,
         },
         transaction::TransactionError,
     },
@@ -152,7 +152,7 @@ pub struct DbTransaction {
     pub index: i64,
 }
 
-pub struct UpdateTransactionRequest {
+pub struct LogTransactionRequest {
     pub transaction_info: DbTransaction,
 }
 
@@ -576,16 +576,16 @@ impl SimplePostgresClient {
         }
     }
 
-    pub(crate) fn update_transaction_impl(
+    pub(crate) fn log_transaction_impl(
         &mut self,
-        transaction_info: UpdateTransactionRequest,
+        transaction_log_info: LogTransactionRequest,
     ) -> Result<(), GeyserPluginError> {
         let client = self.client.get_mut().unwrap();
         let statement = &client.update_transaction_log_stmt;
         let client = &mut client.client;
         let updated_on = Utc::now().naive_utc();
 
-        let transaction_info = transaction_info.transaction_info;
+        let transaction_info = transaction_log_info.transaction_info;
         let result = client.query(
             statement,
             &[
@@ -622,8 +622,8 @@ impl ParallelPostgresClient {
         slot: u64,
         transaction_info: &ReplicaTransactionInfoV2,
         transaction_write_version: u64,
-    ) -> UpdateTransactionRequest {
-        UpdateTransactionRequest {
+    ) -> LogTransactionRequest {
+        LogTransactionRequest {
             transaction_info: build_db_transaction(
                 slot,
                 transaction_info,
@@ -632,14 +632,14 @@ impl ParallelPostgresClient {
         }
     }
 
-    pub fn update_transaction_info(
+    pub fn log_transaction_info(
         &self,
         transaction_info: &ReplicaTransactionInfoV2,
         slot: u64,
     ) -> Result<(), GeyserPluginError> {
         self.transaction_write_version
             .fetch_add(1, Ordering::Relaxed);
-        let wrk_item = DbWorkItem::UpdateTransaction(Box::new(Self::build_transaction_request(
+        let wrk_item = DbWorkItem::LogTransaction(Box::new(Self::build_transaction_request(
             slot,
             transaction_info,
             self.transaction_write_version.load(Ordering::Relaxed),
@@ -657,6 +657,7 @@ impl ParallelPostgresClient {
 #[cfg(test)]
 pub(crate) mod tests {
     use {
+        super::*,
         solana_account_decoder::parse_token::UiTokenAmount,
         solana_sdk::{
             hash::Hash,
@@ -669,7 +670,6 @@ pub(crate) mod tests {
             },
         },
         solana_transaction_status::InnerInstruction,
-        super::*,
     };
 
     fn check_compiled_instruction_equality(
@@ -1393,7 +1393,7 @@ pub(crate) mod tests {
             Some(true),
             SimpleAddressLoader::Disabled,
         )
-            .unwrap();
+        .unwrap();
 
         let transaction_status_meta = build_transaction_status_meta();
         let transaction_info = ReplicaTransactionInfoV2 {
@@ -1438,7 +1438,7 @@ pub(crate) mod tests {
                 readonly: vec![Pubkey::new_unique(), Pubkey::new_unique()],
             }),
         )
-            .unwrap();
+        .unwrap();
 
         let transaction_status_meta = build_transaction_status_meta();
         let transaction_info = ReplicaTransactionInfoV2 {

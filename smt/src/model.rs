@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::io;
 
 use chrono;
-use diesel::{Connection, ExpressionMethods, prelude::*, QueryDsl, RunQueryDsl};
+use diesel::{prelude::*};
 use postgres_types::{FromSql, ToSql};
 use serde_derive::{Deserialize, Serialize};
 use thiserror::Error;

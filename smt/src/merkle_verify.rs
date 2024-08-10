@@ -11,7 +11,7 @@ impl MerkleVerify {
         let leaves = leaves.into_iter().map(|l| {
             let mut left: [u8; 32] = [0u8; 32];
             let mut blake2b = Blake2bBuilder::new(32).build();
-            blake2b.update(hex::decode(l.0).unwrap().as_slice().clone());
+            blake2b.update(hex::decode(l.0).unwrap().as_slice());
             blake2b.finalize(&mut left);
             let right: [u8; 32] = hex::decode(l.1).unwrap().try_into().unwrap();
             (H256::from(left), H256::from(right))
