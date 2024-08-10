@@ -192,7 +192,7 @@ CREATE TYPE "LoadedMessageV0" AS
 -- The table storing transactions
 CREATE TABLE transaction
 (
-    id            bigserial PRIMARY KEY,
+    id                bigserial PRIMARY KEY,
     slot              BIGINT    NOT NULL,
     signature         BYTEA     NOT NULL,
     is_vote           BOOL      NOT NULL,

@@ -295,10 +295,6 @@ pub enum GeyserPluginError {
     /// Error when notify end of startup
     #[error("Error notifying end of startup. Error message: ({msg})")]
     EndOfStartupNotifyError { msg: String },
-
-    /// Error when updating the merkle tree root.
-    #[error("Error updating smt root. Error message: ({msg})")]
-    SMTUpdateError { msg: String },
 }
 
 /// The current status of a slot

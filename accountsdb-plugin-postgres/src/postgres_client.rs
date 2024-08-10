@@ -3,15 +3,9 @@
 mod postgres_client_account_index;
 mod postgres_client_block_metadata;
 mod postgres_client_transaction;
-mod postgres_client_account_smt;
 
 use std::path::Path;
 use std::sync::RwLock;
-use rocksdb::*;
-use solana_smt::{
-    account_smt::{DatabaseStoreAccountSMT, SMTAccount},
-    rocks_store::RocksStore,
-};
 /// A concurrent implementation for writing accounts into the PostgreSQL in parallel.
 use {
     crate::{
@@ -44,7 +38,6 @@ use {
     tokio_postgres::types,
 };
 use solana_sdk::pubkey::Pubkey;
-use solana_smt::account_smt::MemoryStoreAccountSMT;
 
 /// The maximum asynchronous requests allowed in the channel to avoid excessive
 /// memory usage. The downside -- calls after this threshold is reached can get blocked.
@@ -70,7 +63,6 @@ struct PostgresSqlClientWrapper {
     insert_token_mint_index_stmt: Option<Statement>,
     bulk_insert_token_owner_index_stmt: Option<Statement>,
     bulk_insert_token_mint_index_stmt: Option<Statement>,
-    update_smt_tree_stmt: Statement,
 }
 
 pub struct SimplePostgresClient {
@@ -131,17 +123,6 @@ impl DbAccountInfo {
             slot: slot as i64,
             write_version: account.write_version(),
             txn_signature: account.txn_signature().map(|v| v.to_vec()),
-        }
-    }
-
-    pub fn to_smt_account(&self) -> SMTAccount {
-        SMTAccount {
-            pubkey: Pubkey::try_from(self.pubkey.clone().as_slice()).unwrap(),
-            lamports: self.lamports.clone(),
-            owner: Pubkey::try_from(self.owner.clone().as_slice()).unwrap(),
-            executable: self.executable.clone(),
-            rent_epoch: self.rent_epoch.clone(),
-            data: self.data.clone(),
         }
     }
 }
@@ -803,7 +784,6 @@ impl SimplePostgresClient {
             Self::build_transaction_info_upsert_statement(&mut client, config)?;
         let update_block_metadata_stmt =
             Self::build_block_metadata_upsert_statement(&mut client, config)?;
-        let update_smt_tree_stmt = Self::build_smt_tree_upsert_statement(&mut client, config)?;
 
         let batch_size = config
             .batch_size
@@ -869,7 +849,6 @@ impl SimplePostgresClient {
                 insert_token_mint_index_stmt,
                 bulk_insert_token_owner_index_stmt,
                 bulk_insert_token_mint_index_stmt,
-                update_smt_tree_stmt,
             }),
             index_token_owner: config.index_token_owner.unwrap_or_default(),
             index_token_mint: config.index_token_mint.unwrap_or(false),
@@ -1329,337 +1308,7 @@ impl PostgresClientBuilder {
 
         ParallelPostgresClient::new(config).map(|v| (v, batch_optimize_by_skiping_older_slots))
     }
-
-    pub fn build_sequence_postgres_client(
-        config: &GeyserPluginPostgresConfig,
-    ) -> Result<SequencePostgresClient, GeyserPluginError> {
-        SequencePostgresClient::new(config)
-    }
 }
 
 
-/// SequenceClient, 1 recv, 1 worker thread
-#[allow(dead_code)]
-pub struct SequencePostgresClient {
-    worker: Option<JoinHandle<Result<(), GeyserPluginError>>>,
-    exit_worker: Arc<AtomicBool>,
-    sender: Sender<DbWorkItem>,
-    transaction_write_version: AtomicU64,
-}
-
-
-impl SequencePostgresClient {
-    pub fn new(config: &GeyserPluginPostgresConfig) -> Result<Self, GeyserPluginError> {
-        info!("Creating SequencePostgresClient...");
-        let (sender, receiver) = bounded(MAX_ASYNC_REQUESTS);
-        let exit_worker = Arc::new(AtomicBool::new(false));
-        let exit_clone = exit_worker.clone();
-        let mut load_client = SimplePostgresClient::new(&config).unwrap();
-        let config = config.clone();
-        let highest_slot = load_client.get_highest_available_slot().unwrap() as i64;
-        let dir = Path::new("./rocks-smt");
-        let db = DB::open_default(dir).unwrap();
-        let rocksdb_store = RocksStore::new(db);
-        let database_store_account_sparse_merkle_tree = DatabaseStoreAccountSMT::new_with_store(rocksdb_store).unwrap();
-        let start_root = hex::encode(database_store_account_sparse_merkle_tree.root().as_slice());
-        info!("start root of smt: {}", start_root);
-        let database_store_account_smt = Arc::new(RwLock::new(database_store_account_sparse_merkle_tree));
-        let memory_store_account_sparse_merkle_tree = MemoryStoreAccountSMT::new_with_store(Default::default()).unwrap();
-        let memory_store_account_smt = Arc::new(RwLock::new(memory_store_account_sparse_merkle_tree));
-
-        let worker = Builder::new()
-            .name(format!("worker-sequence-account"))
-            .spawn(move || -> Result<(), GeyserPluginError> {
-                let panic_on_db_errors = *config
-                    .panic_on_db_errors
-                    .as_ref()
-                    .unwrap_or(&DEFAULT_PANIC_ON_DB_ERROR);
-                let result = SequencePostgresClientWorker::new(config.clone());
-
-                match result {
-                    Ok(mut worker) => {
-                        worker.do_work(receiver, exit_clone, panic_on_db_errors, database_store_account_smt, memory_store_account_smt, highest_slot)?;
-                        Ok(())
-                    }
-                    Err(err) => {
-                        error!("Error when making connection to database: ({})", err);
-                        if panic_on_db_errors {
-                            abort();
-                        }
-                        Err(err)
-                    }
-                }
-            })
-            .unwrap();
-
-        info!("Created SequencePostgresClient.");
-        Ok(Self {
-            worker: Some(worker),
-            exit_worker,
-            sender,
-            transaction_write_version: AtomicU64::default(),
-        })
-    }
-
-    pub fn join(&mut self) -> thread::Result<()> {
-        self.exit_worker.store(true, Ordering::Relaxed);
-        if let Some(handle) = self.worker.take() {
-            let result = handle.join();
-            if result.is_err() {
-                error!("The worker thread has failed: {:?}", result);
-            }
-        }
-        Ok(())
-    }
-
-    pub fn update_account(
-        &mut self,
-        account: &ReplicaAccountInfoV3,
-        slot: u64,
-        is_startup: bool,
-    ) -> Result<(), GeyserPluginError> {
-        if !is_startup && account.txn.is_none() {
-            // we are not interested in accountsdb internal bookeeping updates
-            return Ok(());
-        }
-
-        let account_info = DbAccountInfo::new(account, slot);
-        let wrk_item = DbWorkItem::UpdateAccount(Box::new(UpdateAccountRequest {
-            account_info: account_info.clone(),
-            is_startup,
-        }));
-
-        if let Err(err) = self.sender.send(wrk_item) {
-            return Err(GeyserPluginError::AccountsUpdateError {
-                msg: format!(
-                    "Failed to update the account {:?}, error: {:?}",
-                    bs58::encode(account.pubkey()).into_string(),
-                    err
-                ),
-            });
-        }
-
-        Ok(())
-    }
-
-
-    // pub fn update_slot_status(
-    //     &mut self,
-    //     slot: u64,
-    //     parent: Option<u64>,
-    //     status: SlotStatus,
-    // ) -> Result<(), GeyserPluginError> {
-    //     let wrk_item = DbWorkItem::UpdateSlot(Box::new(UpdateSlotRequest {
-    //         slot,
-    //         parent,
-    //         slot_status: status,
-    //     }));
-    //
-    //     if let Err(err) = self.sender.send(wrk_item) {
-    //         return Err(GeyserPluginError::SlotStatusUpdateError {
-    //             msg: format!("Failed to update the slot {:?}, error: {:?}", slot, err),
-    //         });
-    //     }
-    //
-    //     Ok(())
-    // }
-
-    // pub fn update_untrusted_entry(&mut self, untrusted_entry: &UntrustedEntry) -> Result<(), GeyserPluginError> {
-    //     let untrusted_entry_info = DbUntrustedEntryInfo::from(untrusted_entry);
-    //     let wrk_item = DbWorkItem::UpdateUntrustedEntry(Box::new(UpdateUntrustedEntryRequest { untrusted_entry_info }));
-    //
-    //     if let Err(err) = self.sender.send(wrk_item) {
-    //         return Err(GeyserPluginError::UntrustedEntryUpdateError {
-    //             msg: format!("Failed to update the untrusted entry , error: {:?}", err),
-    //         });
-    //     }
-    //
-    //     Ok(())
-    // }
-
-    // pub fn update_entry(&mut self, entry: &ReplicaEntryInfoV2) -> Result<(), GeyserPluginError> {
-    //     let entry_info = DbEntryInfo::from(entry);
-    //     let wrk_item = DbWorkItem::UpdateEntry(Box::new(UpdateEntryRequest { entry_info }));
-    //
-    //     if let Err(err) = self.sender.send(wrk_item) {
-    //         return Err(GeyserPluginError::EntryUpdateError {
-    //             msg: format!("Failed to update the entry , error: {:?}", err),
-    //         });
-    //     }
-    //
-    //     Ok(())
-    // }
-
-    // pub fn update_block_metadata(
-    //     &mut self,
-    //     block_info: &ReplicaBlockInfoV3,
-    // ) -> Result<(), GeyserPluginError> {
-    //     let wrk_item = DbWorkItem::UpdateBlockMetadata(Box::new(
-    //         UpdateBlockMetadataRequest {
-    //             block_info: DbBlockInfo::from(block_info),
-    //         },
-    //     ));
-    //
-    //     if let Err(err) = self.sender.send(wrk_item) {
-    //         return Err(GeyserPluginError::BlockUpdateError {
-    //             msg: format!(
-    //                 "Failed to update the block metadata at slot {:?}, error: {:?}",
-    //                 block_info.slot, err
-    //             ),
-    //         });
-    //     }
-    //
-    //     Ok(())
-    // }
-
-    pub fn notify_end_of_startup(&mut self) -> Result<(), GeyserPluginError> {
-        info!("Notifying the end of startup");
-        println!("Notifying the end of startup");
-
-        info!("Done with notifying the end of startup");
-
-        Ok(())
-    }
-}
-
-struct SequencePostgresClientWorker {
-    client: SimplePostgresClient,
-    // slot_to_accounts: HashMap<i64, Vec<SMTAccount>>,
-    // slot_to_transactions: HashMap<i64, Vec<SMTTransaction>>,
-}
-
-impl SequencePostgresClientWorker {
-    fn new(
-        config: GeyserPluginPostgresConfig,
-    ) -> Result<Self, GeyserPluginError> {
-        let result = SimplePostgresClient::new(&config);
-        match result {
-            Ok(client) => Ok(SequencePostgresClientWorker {
-                client,
-                // slot_to_accounts: Default::default(),
-                // slot_to_transactions: Default::default(),
-            }),
-            Err(err) => {
-                error!("Error in creating SequencePostgresClientWorker: {}", err);
-                Err(err)
-            }
-        }
-    }
-
-    fn do_work(
-        &mut self,
-        receiver: Receiver<DbWorkItem>,
-        exit_worker: Arc<AtomicBool>,
-        panic_on_db_errors: bool,
-        database_store_account_smt: Arc<RwLock<DatabaseStoreAccountSMT>>,
-        memory_store_account_smt: Arc<RwLock<MemoryStoreAccountSMT>>,
-        slot: i64,
-    ) -> Result<(), GeyserPluginError> {
-        let mut account_current_slot = slot;
-        let mut current_database_store_account_smt_root: String = "".to_string();
-        let mut current_memory_store_account_smt_root: String = "".to_string();
-        let mut transaction_current_slot = slot;
-        let mut cn = 0;
-        let mut from_zero = false;
-        while !exit_worker.load(Ordering::Relaxed) {
-            let work = receiver.recv_timeout(Duration::from_millis(500));
-            match work {
-                Ok(work) => match work {
-                    // if !is_startup && account.txn.is_none() {
-                    //     // we are not interested in accountsdb internal bookeeping updates
-                    //     return Ok(());
-                    // }
-
-                    DbWorkItem::UpdateAccount(request) => {
-                        let is_startup = request.is_startup;
-                        let account_info = request.account_info;
-                        println!("is_startup: {:?} slot: {:?} account_info.slot: {:?} txn_signature.is_some: {:?}",
-                                 is_startup, slot, account_info.slot, account_info.txn_signature.is_some());
-
-                        // if !from_zero {
-                        //     if account_info.slot == 0 {
-                        //         from_zero = true
-                        //     }
-                        // }
-
-
-                        // if (is_startup && from_zero) || (!is_startup && account_info.txn_signature.is_some()) {
-                            if (!is_startup) {
-
-                                // if account_info.slot == 0 {
-                            //     println!("account_info.slot == 0");
-                            //     cn = cn + 1;
-                            // }
-                            // if account_info.slot != 0 {
-                            //     println!("cn: {:?}", cn);
-                            // }
-
-                            let raw_acct = account_info.to_smt_account();
-                            // self.slot_to_accounts.entry(account_info.slot).or_insert(Vec::new()).push(raw_acct.clone());
-
-                            let key_hash = raw_acct.smt_key();
-                            // println!("slot: {:?} write_version: {:?} key_hash: {:?}", account_info.slot, account_info.write_version, solana_sdk::hash::Hash::new(key_hash.as_slice().clone()).to_string());
-
-                            if let Err(err) = database_store_account_smt.write().unwrap().update(key_hash.clone(), raw_acct.clone()) {
-                                info!("update database store account merkle tree key value err. {:?}",err);
-                            }
-                            if let Err(err) = memory_store_account_smt.write().unwrap().update(key_hash.clone(), raw_acct.clone()) {
-                                info!("update memory store account merkle tree key value err. {:?}",err);
-                            }
-
-                            let database_store_account_smt_root = solana_sdk::hash::Hash::new(database_store_account_smt.read().unwrap().root().as_slice().clone()).to_string();
-                            let memory_store_account_smt_root = solana_sdk::hash::Hash::new(memory_store_account_smt.read().unwrap().root().as_slice().clone()).to_string();
-
-                            if account_info.slot >= 2 && account_info.slot < 11 {
-                                println!("{:?} {:?} {:?}",account_info.slot,database_store_account_smt_root.clone(), memory_store_account_smt_root.clone())
-                            }
-
-                            if account_info.slot >= 2 {
-                                if let Err(err) = self.client.update_merkle_tree_root(account_info.slot, database_store_account_smt_root.clone()) {
-                                    info!("update_merkle_tree_root err. {:?}",err);
-                                }
-                            }
-
-                            if account_current_slot != account_info.slot {
-                                if !is_startup {
-                                    if current_database_store_account_smt_root != current_memory_store_account_smt_root {
-                                        println!("memory_smt_tree and database_smt_tree are different!!! account_current_slot: {:?} account_info slot: {:?}", account_current_slot, account_info.slot);
-                                    }
-                                }
-                                account_current_slot = account_info.slot;
-                            }
-                            current_database_store_account_smt_root = database_store_account_smt_root.clone();
-                            current_memory_store_account_smt_root = memory_store_account_smt_root.clone();
-                        }
-                    }
-                    DbWorkItem::UpdateSlot(request) => {}
-                    DbWorkItem::LogTransaction(request) => {
-                        let transaction_info = request.transaction_info;
-                        if transaction_current_slot != transaction_info.slot {
-                            // println!("UpdateTransaction slot {:?} {:?}", transaction_current_slot, transaction_info.slot);
-                        } else {
-                            // println!("UpdateTransaction slot same");
-                        }
-                    }
-                    DbWorkItem::UpdateBlockMetadata(request) => {}
-                    // DbWorkItem::UpdateUntrustedEntry(request) => {}
-                    // DbWorkItem::UpdateEntry(request) => {}
-                },
-                Err(err) => match err {
-                    RecvTimeoutError::Timeout => {
-                        continue;
-                    }
-                    _ => {
-                        error!("Error in receiving the item {:?}", err);
-                        if panic_on_db_errors {
-                            abort();
-                        }
-                        break;
-                    }
-                },
-            }
-        }
-        Ok(())
-    }
-}
 
