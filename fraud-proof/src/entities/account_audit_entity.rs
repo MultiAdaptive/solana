@@ -1,4 +1,6 @@
 diesel::table! {
+    use diesel::sql_types::*;
+
     #[sql_name="account_audit"]
     table_account_audit(column_id) {
         #[sql_name = "id"]

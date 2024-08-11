@@ -47,7 +47,7 @@ impl ChainBriefService<'_> {
             payer_account.to_owned(),
             system_program_account.to_owned(),
         ];
-        
+
         let ix = Instruction::new_with_borsh(
             *self.program_id,
             &(CREATE_BRIEF_ACCOUNT_DISCRIMINANT, chain_brief.clone()),

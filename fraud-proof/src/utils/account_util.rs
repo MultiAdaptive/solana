@@ -3,8 +3,7 @@ use solana_sdk::account::Account;
 use solana_sdk::hash::Hash;
 use solana_sdk::pubkey::Pubkey;
 use solana_sdk::signature::Signature;
-
-use crate::model::smt_account::SMTAccount;
+use crate::smt::account_smt::SMTAccount;
 
 pub fn account_to_vec(pk: &Pubkey, account: &Account) -> Vec<u8> {
     let mut bytes = vec![];

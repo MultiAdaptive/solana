@@ -1,5 +1,5 @@
 store:
-  host: "52.221.9.230"
+  host: "127.0.0.1"
   port: 5432
   username: "solana"
   password: "1234"

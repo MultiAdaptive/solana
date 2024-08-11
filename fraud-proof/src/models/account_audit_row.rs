@@ -1,8 +1,7 @@
 use diesel::Queryable;
 use serde::{Deserialize, Serialize};
 use solana_sdk::pubkey::Pubkey;
-
-use crate::model::smt_account::SMTAccount;
+use crate::smt::account_smt::SMTAccount;
 
 #[derive(Debug, Clone, Queryable, Serialize, Deserialize)]
 #[diesel(table_name = table_account_audit)]

@@ -12,22 +12,20 @@ use solana_sdk::signature::{Keypair, Signer};
 
 use crate::common::node_configs::{ChainConfiguration, StoreConfiguration};
 use crate::common::node_error::NodeError;
-use crate::common::node_configs::NodeConfiguration;
 use crate::contract::chain_brief::ChainBrief;
-use crate::contract::chain_tally::ChainTally;
-use crate::contract::wrap_slot::WrapSlot;
 use crate::services::chain_basic_service::ChainBasicService;
 use crate::services::chain_brief_service::ChainBriefService;
+use crate::services::chain_service::ChainService;
 use crate::services::chain_state_service::ChainStateService;
 use crate::services::chain_tally_service::ChainTallyService;
-use crate::services::store_service::StoreService;
+use crate::services::execute_service::ExecuteService;
 use crate::utils::store_util::{create_one, create_pool, PgConnectionPool};
 use crate::utils::time_util;
+use crate::utils::uuid_util::generate_uuid;
 
 pub struct Simulator {
-    store_client_pool: Option<PgConnectionPool>,
-    store_client_one: Option<Client>,
-    chain_client: Option<RpcClient>,
+    execute_service: Option<ExecuteService>,
+    chain_service: Option<ChainService>,
     store_config: Option<StoreConfiguration>,
     chain_config: Option<ChainConfiguration>,
 }
@@ -36,34 +34,32 @@ pub struct Simulator {
 impl Simulator {
     pub fn new() -> Self {
         Self {
-            store_client_pool: None,
-            store_client_one: None,
-            chain_client: None,
+            execute_service: None,
+            chain_service: None,
             store_config: None,
             chain_config: None,
         }
     }
 
-    pub fn config(mut self, config_file: String) -> Self {
-        let cfg_result = NodeConfiguration::load_from_file(config_file.clone().as_str());
-        info!("cfg_result: {:?}", cfg_result);
-        if cfg_result.is_ok() {
-            let cfg = cfg_result.unwrap();
-            self.store_config = Some(cfg.store.clone());
-            self.chain_config = Some(cfg.chain.clone());
-        }
-
+    pub fn store(mut self, store_config: &StoreConfiguration) -> Self {
+        self.store_config = Some(store_config.clone());
         self
     }
 
+    pub fn chain(mut self, chain_config: &ChainConfiguration) -> Self {
+        self.chain_config = Some(chain_config.clone());
+        self
+    }
 
     pub fn start(&mut self) {
-        if let Err(e) = self.connect_store() {
+        if let Err(e) = self.connect_execute() {
             error!("{:?}", e);
         };
+
         if let Err(e) = self.connect_chain() {
             error!("{:?}", e);
         };
+
 
         let is_success = self.start_submit_brief();
         if is_success {
@@ -74,267 +70,88 @@ impl Simulator {
     }
 
 
+    fn connect_execute(&mut self) -> Result<(), NodeError> {
+        let mut execute_service = ExecuteService::new(&self.store_config.clone().unwrap())?;
+
+        match execute_service.check_smt() {
+            Ok(flag) => {
+                if !flag {
+                    error!("check SMT is false");
+                    return Err(
+                        NodeError::new(generate_uuid(),
+                                       "check SMT is false.".to_string(),
+                        )
+                    );
+                }
+            }
+            Err(e) => {
+                error!("check SMT failed. err: {}", e);
+                return Err(
+                    NodeError::new(generate_uuid(),
+                                   "check SMT failed.".to_string(),
+                    )
+                );
+            }
+        }
+
+        self.execute_service = Some(execute_service);
+
+        Ok(())
+    }
+
+
     fn connect_chain(&mut self) -> Result<(), NodeError> {
-        let config = self.chain_config.clone().unwrap();
-        let rpc_url = config.url;
-        let rpc_client: RpcClient = RpcClient::new_with_commitment(rpc_url, CommitmentConfig::confirmed());
+        let chain_service = ChainService::new(&self.chain_config.clone().unwrap()).unwrap();
 
-        self.chain_client = Some(rpc_client);
+        self.chain_service = Some(chain_service);
 
         Ok(())
     }
-
-    fn connect_store(&mut self) -> Result<(), NodeError> {
-        let config = self.store_config.clone().unwrap();
-
-        let pool: PgConnectionPool = create_pool(
-            config.to_owned(),
-            10,
-        );
-
-        self.store_client_pool = Some(pool);
-
-        let one = create_one(config.to_owned());
-
-        self.store_client_one = Some(one);
-
-        Ok(())
-    }
-
 
     pub fn start_submit_brief(&mut self) -> bool {
         let mut is_success: bool = true;
-        let rpc_client = self.chain_client.as_ref().unwrap();
 
-        let fraud_proof_native_program_id_binding = Pubkey::from_str(&self.chain_config.clone().unwrap().fraud_proof_native_program_id);
-        let fraud_proof_native_program_id = fraud_proof_native_program_id_binding.as_ref().unwrap();
+        let execute_service = self.execute_service.as_mut().unwrap();
+        let chain_service = self.chain_service.as_mut().unwrap();
 
-        let execute_node = self.get_role(&self.chain_config.clone().unwrap().execute_keypair).unwrap();
-
-        let chain_brief_service = ChainBriefService {
-            rpc_client: rpc_client,
-            program_id: fraud_proof_native_program_id,
-            payer: &execute_node,
-        };
-
-        let chain_tally_service = ChainTallyService {
-            rpc_client: rpc_client,
-            program_id: fraud_proof_native_program_id,
-            payer: &execute_node,
-        };
-
-        is_success = self.create_state_account();
+        is_success = chain_service.create_state_account();
         if !is_success {
             error!("create state account fail.");
             return is_success.clone();
-        } else {
-            info!("create state account success.");
         }
 
-        let is_tally_exist = chain_tally_service.is_tally_account_exist();
-        if !is_tally_exist {
-            info!("tally account is not exist.");
-            is_success = chain_tally_service.create_tally_account();
-            if !is_success {
-                error!("create tally account fail.");
-                return is_success.clone();
-            } else {
-                info!("create tally account success.");
-            }
-        } else {
-            info!("tally account is already exist.");
-        }
-
-        let current_wrap_slot = chain_tally_service.get_max_wrap_slot().unwrap();
-        let current_slot = current_wrap_slot.slot;
-
-        let mut store_service = StoreService {
-            client_pool: self.store_client_pool.as_ref().unwrap(),
-            client_one: self.store_client_one.as_mut().unwrap(),
-        };
-
-        let present_slot = store_service.query_max_slot_from_block().unwrap();
-
-        if current_slot >= present_slot {
-            info!("all slots are submitted. current slot: {:?} present slot: {:?}", current_slot.clone(),present_slot.clone());
+        is_success = chain_service.create_tally_account();
+        if !is_success {
+            error!("create tally account fail.");
             return is_success.clone();
         }
-        info!("some slots are not submitted. current slot: {:?} present slot: {:?}", current_slot.clone(),present_slot.clone());
-
-        let ret = store_service.generate_initial_slot_summary_and_smt(current_slot);
-        if ret.is_err() {
-            error!("generate initial slot summary and smt fail. slot: {:?}", current_slot.clone());
-            is_success = false;
-            return is_success.clone();
-        }
-        let (mut smt_tree, mut slot_summary);
-
-        (smt_tree, slot_summary) = ret.unwrap();
-
-        let mut start_slot = current_slot.clone() + 1;
-        let mut end_slot = (present_slot.clone() - 1).min(start_slot.clone() + 100);
 
         loop {
-            (smt_tree, slot_summary) = store_service.generate_continue_slot_summary_and_smt(start_slot.clone(), end_slot.clone(), smt_tree, slot_summary.clone()).unwrap();
+            // 获取最后处理的区块高度
+            let last_slot = execute_service.get_last_slot().unwrap();
+            let max_slot = execute_service.get_max_slot().unwrap();
+            if max_slot - 1 <= last_slot {
+                info!("all slots are submitted. last slot: {:?} max slot: {:?}", last_slot.clone(),max_slot.clone());
+                time_util::sleep_seconds(1);
+                continue;
+            }
+            info!("some slots are not submitted. submit them now. last slot: {:?} max slot: {:?}", last_slot.clone(),max_slot.clone());
 
-            let briefs: Vec<ChainBrief> = store_service.generate_range_briefs_from_slot_summary(start_slot.clone(), end_slot.clone(), slot_summary.clone()).unwrap();
+            let start_slot = std::cmp::max(last_slot + 1, execute_service.get_initial_slot().unwrap());
+            let end_slot = max_slot - 1;
+            let briefs: Vec<ChainBrief> = execute_service.generate_briefs(start_slot.clone(), end_slot.clone()).unwrap();
 
             // send brief to chain
             // The slot 0 and slot 1 are initial of blockchain, we never challenge, so skip them.
             for brief in briefs {
-                let wrap_slot: WrapSlot = WrapSlot {
-                    slot: brief.slot,
-                };
-                let is_brief_exist = chain_brief_service.is_brief_account_exist(wrap_slot.clone());
-                if is_brief_exist {
-                    info!("brief account is already exist. slot: {:?}", wrap_slot.clone());
+                info!("brief: {:?}", brief);
+                is_success = chain_service.create_brief_account(brief.clone());
+                if !is_success {
+                    error!("create brief account fail. slot: {:?}", brief.clone());
                     continue;
                 }
-                info!("brief account is not exist. slot: {:?},brief: {:?}", wrap_slot.clone(), brief);
-                is_success = chain_brief_service.create_brief_account(wrap_slot.clone(), brief.clone());
-                if is_success {
-                    let is_brief_exist = chain_brief_service.is_brief_account_exist(wrap_slot.clone());
-                    if is_brief_exist {
-                        let save_brief = chain_brief_service.fetch_brief_account(wrap_slot.clone()).unwrap();
-                        info!("create brief account success. slot: {:?}, brief: {:?}", wrap_slot.clone(), save_brief.clone());
-                    } else {
-                        error!("create brief account fail. slot: {:?}", wrap_slot.clone());
-                        is_success = false;
-                        break;
-                    }
-                } else {
-                    error!("create brief account fail. slot: {:?}", wrap_slot.clone());
-                    break;
-                }
-            }
-
-            start_slot = end_slot + 1;
-            loop {
-                let max_slot = store_service.query_max_slot_from_block().unwrap();
-                if max_slot > start_slot + 1 {
-                    end_slot = (max_slot.clone() - 1).min(start_slot.clone() + 100);
-                    break;
-                }
-                time_util::sleep_seconds(1);
             }
         }
-    }
-
-
-    fn create_state_account(&self) -> bool {
-        let mut is_success: bool = true;
-        let rpc_client = self.chain_client.as_ref().unwrap();
-
-        let fraud_proof_native_program_id_binding = Pubkey::from_str(&self.chain_config.clone().unwrap().fraud_proof_native_program_id);
-        let fraud_proof_native_program_id = fraud_proof_native_program_id_binding.as_ref().unwrap();
-
-        let execute_node = self.get_role(&self.chain_config.clone().unwrap().execute_keypair).unwrap();
-
-        let chain_state_service = ChainStateService {
-            rpc_client: rpc_client,
-            program_id: fraud_proof_native_program_id,
-            payer: &execute_node,
-        };
-
-        let is_state_exist = chain_state_service.is_state_account_exist();
-        if !is_state_exist {
-            info!("state account is not exist.");
-            is_success = chain_state_service.initialize();
-            if !is_success {
-                error!("initialize fail.");
-                return is_success.clone();
-            } else {
-                info!("initialize success.");
-            }
-        } else {
-            info!("state account is already exist.");
-        }
-
-        return is_success.clone();
-    }
-
-    fn create_tally_account(&mut self) -> bool {
-        let mut is_success: bool = true;
-        let rpc_client = self.chain_client.as_ref().unwrap();
-
-        let fraud_proof_native_program_id_binding = Pubkey::from_str(&self.chain_config.clone().unwrap().fraud_proof_native_program_id);
-        let fraud_proof_native_program_id = fraud_proof_native_program_id_binding.as_ref().unwrap();
-
-        let execute_node = self.get_role(&self.chain_config.clone().unwrap().execute_keypair).unwrap();
-
-        let chain_tally_service = ChainTallyService {
-            rpc_client: rpc_client,
-            program_id: fraud_proof_native_program_id,
-            payer: &execute_node,
-        };
-
-        let is_tally_exist = chain_tally_service.is_tally_account_exist();
-        if !is_tally_exist {
-            info!("tally account is not exist.");
-            is_success = chain_tally_service.create_tally_account();
-            if !is_success {
-                error!("create tally account fail.");
-                return is_success.clone();
-            } else {
-                info!("create tally account success.");
-            }
-        } else {
-            info!("tally account is already exist.");
-        }
-
-        return is_success.clone();
-    }
-
-
-    fn create_brief_account(&mut self, brief: ChainBrief) -> bool {
-        let mut is_success: bool = true;
-        let rpc_client = self.chain_client.as_ref().unwrap();
-
-        let fraud_proof_native_program_id_binding = Pubkey::from_str(&self.chain_config.clone().unwrap().fraud_proof_native_program_id);
-        let fraud_proof_native_program_id = fraud_proof_native_program_id_binding.as_ref().unwrap();
-
-        let execute_node = self.get_role(&self.chain_config.clone().unwrap().execute_keypair).unwrap();
-
-
-        let chain_brief_service = ChainBriefService {
-            rpc_client: rpc_client,
-            program_id: fraud_proof_native_program_id,
-            payer: &execute_node,
-        };
-
-        let wrap_slot: WrapSlot = WrapSlot {
-            slot: brief.slot,
-        };
-        let is_brief_exist = chain_brief_service.is_brief_account_exist(wrap_slot.clone());
-        if is_brief_exist {
-            info!("brief account is already exist. slot: {:?}", wrap_slot.clone());
-            return is_success.clone();
-        }
-        info!("brief account is not exist. slot: {:?},brief: {:?}", wrap_slot.clone(), brief);
-        is_success = chain_brief_service.create_brief_account(wrap_slot.clone(), brief.clone());
-        if is_success {
-            let is_brief_exist = chain_brief_service.is_brief_account_exist(wrap_slot.clone());
-            if is_brief_exist {
-                let save_brief = chain_brief_service.fetch_brief_account(wrap_slot.clone()).unwrap();
-                info!("create brief account success. slot: {:?}, brief: {:?}", wrap_slot.clone(), save_brief.clone());
-            } else {
-                error!("create brief account fail. slot: {:?}", wrap_slot.clone());
-                is_success = false;
-                return is_success.clone();
-            }
-        } else {
-            error!("create brief account fail. slot: {:?}", wrap_slot.clone());
-            return is_success.clone();
-        }
-
-        return is_success.clone();
-    }
-
-    pub fn get_role(&self, keypair: &str) -> Option<Keypair> {
-        let role = Keypair::from_base58_string(keypair);
-        return Some(role);
     }
 }
-
-
 

@@ -1,31 +1,7 @@
 use postgres_types::{FromSql, ToSql};
+use serde_derive::{Deserialize, Serialize};
 
-pub mod sql_types {
-    use serde_derive::{Deserialize, Serialize};
-
-    #[derive(Debug, Clone, Serialize, Deserialize)]
-    #[derive(diesel::sql_types::SqlType)]
-    #[diesel(postgres_type(name = "LoadedMessageV0"))]
-    pub struct LoadedMessageV0Type;
-
-
-    #[derive(Debug, Clone, Serialize, Deserialize)]
-    #[derive(diesel::sql_types::SqlType)]
-    #[diesel(postgres_type(name = "Reward"))]
-    pub struct RewardType;
-
-    #[derive(Debug, Clone, Serialize, Deserialize)]
-    #[derive(diesel::sql_types::SqlType)]
-    #[diesel(postgres_type(name = "TransactionMessage"))]
-    pub struct TransactionMessageType;
-
-    #[derive(Debug, Clone, Serialize, Deserialize)]
-    #[derive(diesel::sql_types::SqlType)]
-    #[diesel(postgres_type(name = "TransactionStatusMeta"))]
-    pub struct TransactionStatusMetaType;
-}
-
-#[derive(Clone, Debug, FromSql, ToSql)]
+#[derive(Clone, Debug, Serialize, Deserialize, FromSql, ToSql)]
 #[postgres(name = "TransactionMessageHeader")]
 pub struct DbTransactionMessageHeader {
     pub num_required_signatures: i16,
@@ -33,7 +9,7 @@ pub struct DbTransactionMessageHeader {
     pub num_readonly_unsigned_accounts: i16,
 }
 
-#[derive(Clone, Debug, FromSql, ToSql)]
+#[derive(Clone, Debug, Serialize, Deserialize, FromSql, ToSql)]
 #[postgres(name = "CompiledInstruction")]
 pub struct DbCompiledInstruction {
     pub program_id_index: i16,
@@ -42,7 +18,7 @@ pub struct DbCompiledInstruction {
 }
 
 
-#[derive(Clone, Debug, FromSql, ToSql)]
+#[derive(Clone, Debug, Serialize, Deserialize, FromSql, ToSql)]
 #[postgres(name = "TransactionMessage")]
 pub struct DbTransactionMessage {
     pub header: DbTransactionMessageHeader,
@@ -50,3 +26,67 @@ pub struct DbTransactionMessage {
     pub recent_blockhash: Vec<u8>,
     pub instructions: Vec<DbCompiledInstruction>,
 }
+
+#[derive(Clone, Debug, Serialize, Deserialize, FromSql, ToSql)]
+#[postgres(name = "Reward")]
+pub struct Reward {
+    pub pubkey: String,
+    pub lamports: i64,
+    pub post_balance: i64,
+    pub reward_type: RewardType,
+    pub commission: Option<i16>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, FromSql, ToSql)]
+#[postgres(name = "reward_type")]
+pub enum RewardType {
+    Fee,
+    Rent,
+    Staking,
+    Voting,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, FromSql, ToSql)]
+#[postgres(name = "transaction_error_code")]
+pub enum TransactionErrorCode {
+    AccountInUse,
+    AccountLoadedTwice,
+    AccountNotFound,
+    ProgramAccountNotFound,
+    InsufficientFundsForFee,
+    InvalidAccountForFee,
+    AlreadyProcessed,
+    BlockhashNotFound,
+    InstructionError,
+    CallChainTooDeep,
+    MissingSignatureForFee,
+    InvalidAccountIndex,
+    SignatureFailure,
+    InvalidProgramForExecution,
+    SanitizeFailure,
+    ClusterMaintenance,
+    AccountBorrowOutstanding,
+    WouldExceedMaxAccountCostLimit,
+    WouldExceedMaxBlockCostLimit,
+    UnsupportedVersion,
+    InvalidWritableAccount,
+    WouldExceedMaxAccountDataCostLimit,
+    TooManyAccountLocks,
+    AddressLookupTableNotFound,
+    InvalidAddressLookupTableOwner,
+    InvalidAddressLookupTableData,
+    InvalidAddressLookupTableIndex,
+    InvalidRentPayingAccount,
+    WouldExceedMaxVoteCostLimit,
+    WouldExceedAccountDataBlockLimit,
+    WouldExceedAccountDataTotalLimit,
+    DuplicateInstruction,
+    InsufficientFundsForRent,
+    MaxLoadedAccountsDataSizeExceeded,
+    InvalidLoadedAccountsDataSizeLimit,
+    ResanitizationNeeded,
+    UnbalancedTransaction,
+    ProgramExecutionTemporarilyRestricted,
+}
+
+
