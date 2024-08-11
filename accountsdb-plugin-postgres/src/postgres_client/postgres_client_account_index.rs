@@ -1,4 +1,8 @@
 use {
+    super::{
+        DbAccountInfo, ReadableAccountInfo, SimplePostgresClient,
+        DEFAULT_ACCOUNTS_INSERT_BATCH_SIZE,
+    },
     crate::{
         geyser_plugin_postgres::{GeyserPluginPostgresConfig, GeyserPluginPostgresError},
         inline_spl_token::{self, GenericTokenAccount},
@@ -10,10 +14,6 @@ use {
     solana_measure::measure::Measure,
     solana_metrics::*,
     solana_sdk::pubkey::Pubkey,
-    super::{
-        DbAccountInfo, DEFAULT_ACCOUNTS_INSERT_BATCH_SIZE, ReadableAccountInfo,
-        SimplePostgresClient,
-    },
     tokio_postgres::types,
 };
 

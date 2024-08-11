@@ -2,9 +2,9 @@ use std::marker::PhantomData;
 
 use rocksdb::*;
 use sparse_merkle_tree::{
-    error::Error,
-    traits::{StoreReadOps, StoreWriteOps, Value},
-    BranchKey, BranchNode, H256,
+    BranchKey,
+    BranchNode,
+    error::Error, H256, traits::{StoreReadOps, StoreWriteOps, Value},
 };
 
 use super::serde::{branch_key_to_vec, branch_node_to_vec, slice_to_branch_node};
@@ -78,15 +78,16 @@ where
 #[allow(unused_imports)]
 #[allow(dead_code)]
 mod tests {
-    use rocksdb::{OptimisticTransactionDB, Options, DB};
+    use std::path::Path;
+
+    use blake2b_rs::{Blake2b, Blake2bBuilder};
+    use rocksdb::DB;
     use sparse_merkle_tree::{
-        blake2b::Blake2bHasher, default_store::DefaultStore as SMTDefaultStore, traits::Value,
-        SparseMerkleTree, H256,
+        blake2b::Blake2bHasher, default_store::DefaultStore, H256,
+        SparseMerkleTree, traits::Value,
     };
 
     use super::RocksStore;
-    use blake2b_rs::{Blake2b, Blake2bBuilder};
-    use std::path::Path;
 
     #[allow(dead_code)]
     pub fn new_blake2b() -> Blake2b {
@@ -131,8 +132,8 @@ mod tests {
         }
     }
 
-    type MemoryStoreSMT = SparseMerkleTree<Blake2bHasher, Word, SMTDefaultStore<Word>>;
-    type RocksStoreSMT = SparseMerkleTree<Blake2bHasher, Word, RocksStore<Word>>;
+    type MemoryStoreAccountSMT = SparseMerkleTree<Blake2bHasher, Word, DefaultStore<Word>>;
+    type DatabaseStoreAccountSMT = SparseMerkleTree<Blake2bHasher, Word, RocksStore<Word>>;
 
     #[test]
     fn test_rocks_store_functions() {
@@ -151,7 +152,7 @@ mod tests {
 
         // generate a merkle tree with a memory store
         let (root1, proof1) = {
-            let mut memory_store_smt = MemoryStoreSMT::new_with_store(Default::default()).unwrap();
+            let mut memory_store_smt = MemoryStoreAccountSMT::new_with_store(Default::default()).unwrap();
             for (key, value) in kvs.iter() {
                 memory_store_smt.update(key.clone(), value.clone()).unwrap();
             }
@@ -167,7 +168,7 @@ mod tests {
         let (root2, proof2) = {
             let db = DB::open_default(dir).unwrap();
             let rocksdb_store = RocksStore::new(db);
-            let mut rocksdb_store_smt = RocksStoreSMT::new_with_store(rocksdb_store).unwrap();
+            let mut rocksdb_store_smt = DatabaseStoreAccountSMT::new_with_store(rocksdb_store).unwrap();
             // Write db
             for (key, value) in kvs.iter() {
                 rocksdb_store_smt
@@ -190,7 +191,7 @@ mod tests {
             let rocksdb_store = RocksStore::new(db);
 
             // parse db as smt
-            let rocksdb_store_smt = RocksStoreSMT::new_with_store(rocksdb_store).unwrap();
+            let rocksdb_store_smt = DatabaseStoreAccountSMT::new_with_store(rocksdb_store).unwrap();
 
             let root = rocksdb_store_smt.root().clone();
             println!("read root: {:?}", root);

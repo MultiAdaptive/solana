@@ -1,16 +1,16 @@
-use blake2b_rs::Blake2bBuilder;
-use solana_sdk::signature::Signature;
-use sparse_merkle_tree::traits::Value;
 use std::collections::HashMap;
 use std::str::FromStr;
 
+use blake2b_rs::Blake2bBuilder;
+use sparse_merkle_tree::traits::Value;
+
 use {
     crate::{
-        account_smt::{RocksStoreSMT, SMTAccount},
+        account_smt::{DatabaseStoreAccountSMT, SMTAccount},
         model::*,
         rocks_store::RocksStore,
     },
-    diesel::{prelude::*, Connection, ExpressionMethods, PgConnection, QueryDsl, RunQueryDsl},
+    diesel::{Connection, ExpressionMethods, PgConnection, QueryDsl, RunQueryDsl},
     itertools::Itertools,
     log::{error, info},
     postgres::{Client, NoTls},
@@ -29,6 +29,8 @@ use {
     },
     tempfile::TempDir,
 };
+use solana_sdk::signature::Signature;
+
 use crate::merkle_verify::MerkleVerify;
 
 const SMT_SUBDIR: &str = "smt";
@@ -40,7 +42,7 @@ const BLOCK_STMT: &str = "SELECT block_height FROM block WHERE slot = $1";
 
 pub struct SMTer {
     client: PgConnection,
-    smt: Arc<RwLock<RocksStoreSMT>>,
+    smt: Arc<RwLock<DatabaseStoreAccountSMT>>,
     util_db: DB,
     pub start_slot: u64, // last slot
 }
@@ -63,7 +65,7 @@ impl SMTer {
         })
     }
 
-    fn start_rocks_smt(smt_path: &PathBuf) -> Result<Arc<RwLock<RocksStoreSMT>>, SMTerError> {
+    fn start_rocks_smt(smt_path: &PathBuf) -> Result<Arc<RwLock<DatabaseStoreAccountSMT>>, SMTerError> {
         let db = DB::open_default(smt_path);
         if db.is_err() {
             return Err(SMTerError::InitSMTDBError {
@@ -72,7 +74,7 @@ impl SMTer {
         }
 
         let rocksdb_store = RocksStore::new(db.unwrap());
-        let smt_tree = RocksStoreSMT::new_with_store(rocksdb_store);
+        let smt_tree = DatabaseStoreAccountSMT::new_with_store(rocksdb_store);
         if smt_tree.is_err() {
             return Err(SMTerError::InitSMTError {
                 msg: "Failed to new store for SMT".to_string(),
@@ -203,7 +205,7 @@ impl SMTer {
                 if aa.txn_signature.is_some() && !tx_found {
                     tx_found = true;
                     second_hash =
-                        Hash::new(self.smt.read().unwrap().root().as_slice().clone()).to_string();
+                        Hash::new(self.smt.read().unwrap().root().as_slice()).to_string();
                 }
 
                 let raw_acct = SMTAccount {
@@ -235,7 +237,7 @@ impl SMTer {
             // The slot 0 and slot 1 are initial of blockchain, we never challenge, so skip them.
             if cur_slot >= 2 {
                 let smt_root =
-                    Hash::new(self.smt.read().unwrap().root().as_slice().clone()).to_string();
+                    Hash::new(self.smt.read().unwrap().root().as_slice()).to_string();
                 let last_slot = cur_slot - 1;
                 let first_hash = match slot_summary.get(&last_slot) {
                     Some(ss) => ss.record.fourth_hash.clone(),
@@ -412,7 +414,7 @@ impl SMTer {
                     pre_accounts.insert(
                         key.to_string(),
                         (
-                            Hash::new(account.to_h256().as_slice().clone()).to_string(),
+                            Hash::new(account.to_h256().as_slice()).to_string(),
                             SerAccount::from_normal_account(account.to_normal_account()),
                         ),
                     );
@@ -426,7 +428,7 @@ impl SMTer {
                         post_accounts.insert(
                             Pubkey::try_from(ma.pubkey.as_slice()).unwrap().to_string(),
                             (
-                                Hash::new(ma.to_smt_account().to_h256().as_slice().clone())
+                                Hash::new(ma.to_smt_account().to_h256().as_slice())
                                     .to_string(),
                                 SerAccount::from_normal_account(
                                     ma.to_smt_account().to_normal_account(),
@@ -437,7 +439,7 @@ impl SMTer {
                 });
 
                 // Get pre-root of SMT.
-                pre_root = Hash::new(smt.read().unwrap().root().as_slice().clone()).to_string(); //44 bytes
+                pre_root = Hash::new(smt.read().unwrap().root().as_slice()).to_string(); //44 bytes
 
                 // Get pre-account proof from SMT.
                 let ck_proof: Vec<u8> = smt

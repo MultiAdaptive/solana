@@ -2,14 +2,12 @@ use {
     crate::{
         accounts_update_notifier::AccountsUpdateNotifierImpl,
         block_metadata_notifier::BlockMetadataNotifierImpl,
-        entry_notifier::EntryNotifierImpl,
         block_metadata_notifier_interface::BlockMetadataNotifierArc,
+        entry_notifier::EntryNotifierImpl,
         geyser_plugin_manager::{GeyserPluginManager, GeyserPluginManagerRequest},
         slot_status_notifier::SlotStatusNotifierImpl,
         slot_status_observer::SlotStatusObserver,
         transaction_notifier::TransactionNotifierImpl,
-        untrusted_entry_notifier_interface::UntrustedEntryNotifierArc,
-        untrusted_entry_notifier::UntrustedEntryNotifierImpl,
     },
     crossbeam_channel::Receiver,
     log::*,
@@ -20,8 +18,6 @@ use {
         transaction_notifier_interface::TransactionNotifierArc,
     },
     std::{
-        fs::File,
-        io::Read,
         path::{Path, PathBuf},
         sync::{
             atomic::{AtomicBool, Ordering},
@@ -41,7 +37,6 @@ pub struct GeyserPluginService {
     transaction_notifier: Option<TransactionNotifierArc>,
     entry_notifier: Option<EntryNotifierArc>,
     block_metadata_notifier: Option<BlockMetadataNotifierArc>,
-    untrusted_entry_notifier: Option<UntrustedEntryNotifierArc>,
 }
 
 impl GeyserPluginService {
@@ -86,8 +81,6 @@ impl GeyserPluginService {
             plugin_manager.account_data_notifications_enabled();
         let transaction_notifications_enabled = plugin_manager.transaction_notifications_enabled();
         let entry_notifications_enabled = plugin_manager.entry_notifications_enabled();
-        let untrusted_entry_notifications_enabled = plugin_manager.untrusted_entry_notifications_enabled();
-
         let plugin_manager = Arc::new(RwLock::new(plugin_manager));
 
         let accounts_update_notifier: Option<AccountsUpdateNotifier> =
@@ -113,15 +106,6 @@ impl GeyserPluginService {
         } else {
             None
         };
-
-
-        let untrusted_entry_notifier: Option<UntrustedEntryNotifierArc> = if untrusted_entry_notifications_enabled {
-            let untrusted_entry_notifier = UntrustedEntryNotifierImpl::new(plugin_manager.clone());
-            Some(Arc::new(untrusted_entry_notifier))
-        } else {
-            None
-        };
-
 
         let (slot_status_observer, block_metadata_notifier): (
             Option<SlotStatusObserver>,
@@ -150,6 +134,7 @@ impl GeyserPluginService {
             let plugin_manager = plugin_manager.clone();
             Self::start_manager_rpc_handler(plugin_manager, request_receiver, exit)
         };
+
         info!("Started GeyserPluginService");
         Ok(GeyserPluginService {
             slot_status_observer,
@@ -158,7 +143,6 @@ impl GeyserPluginService {
             transaction_notifier,
             entry_notifier,
             block_metadata_notifier,
-            untrusted_entry_notifier,
         })
     }
 
@@ -186,10 +170,6 @@ impl GeyserPluginService {
 
     pub fn get_block_metadata_notifier(&self) -> Option<BlockMetadataNotifierArc> {
         self.block_metadata_notifier.clone()
-    }
-
-    pub fn get_untrusted_entry_notifier(&self) -> Option<UntrustedEntryNotifierArc> {
-        self.untrusted_entry_notifier.clone()
     }
 
     pub fn join(self) -> thread::Result<()> {
@@ -266,22 +246,4 @@ impl GeyserPluginService {
 pub enum GeyserPluginServiceError {
     #[error("Failed to load a geyser plugin")]
     FailedToLoadPlugin(#[from] Box<dyn std::error::Error>),
-
-    #[error("Cannot open the the plugin config file")]
-    CannotOpenConfigFile(String),
-
-    #[error("Cannot read the the plugin config file")]
-    CannotReadConfigFile(String),
-
-    #[error("The config file is not in a valid Json format")]
-    InvalidConfigFileFormat(String),
-
-    #[error("Plugin library path is not specified in the config file")]
-    LibPathNotSet,
-
-    #[error("Invalid plugin path")]
-    InvalidPluginPath,
-
-    #[error("Cannot load plugin shared library")]
-    PluginLoadError(String),
 }

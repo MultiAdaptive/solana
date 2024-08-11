@@ -51,16 +51,8 @@ lazy_static! {
         .unwrap();
 }
 
-#[derive(Serialize, Deserialize, Debug, Default, PartialEq, Eq, Clone)]
-pub struct UntrustedEntry {
-    pub entries: Vec<Entry>,
-    pub slot: u64,
-    pub parent_slot: u64,
-    pub is_full_slot: bool,
-}
-
-pub type EntrySender = Sender<UntrustedEntry>;
-pub type EntryReceiver = Receiver<UntrustedEntry>;
+pub type EntrySender = Sender<Vec<Entry>>;
+pub type EntryReceiver = Receiver<Vec<Entry>>;
 
 static mut API: Option<Container<Api>> = None;
 

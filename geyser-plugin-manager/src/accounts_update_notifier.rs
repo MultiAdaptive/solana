@@ -3,7 +3,7 @@ use {
     crate::geyser_plugin_manager::GeyserPluginManager,
     log::*,
     solana_accounts_db::{
-        account_storage::meta::{StoredAccountMeta,StoredMeta},
+        account_storage::meta::StoredAccountMeta,
         accounts_update_notifier_interface::AccountsUpdateNotifierInterface,
     },
     solana_geyser_plugin_interface::geyser_plugin_interface::{
@@ -16,7 +16,6 @@ use {
         clock::Slot,
         pubkey::Pubkey,
         transaction::SanitizedTransaction,
-        signature::Signature,
     },
     std::sync::{Arc, RwLock},
 };

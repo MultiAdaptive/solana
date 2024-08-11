@@ -29,7 +29,6 @@ use {
     crossbeam_channel::{unbounded, Receiver, Sender},
     solana_client::connection_cache::ConnectionCache,
     solana_geyser_plugin_manager::block_metadata_notifier_interface::BlockMetadataNotifierArc,
-    solana_geyser_plugin_manager::untrusted_entry_notifier_interface::UntrustedEntryNotifierArc,
     solana_gossip::{
         cluster_info::ClusterInfo, duplicate_shred_handler::DuplicateShredHandler,
         duplicate_shred_listener::DuplicateShredListener,
@@ -144,7 +143,6 @@ impl Tvu {
         repair_quic_endpoint_sender: AsyncSender<LocalRequest>,
         outstanding_repair_requests: Arc<RwLock<OutstandingShredRepairs>>,
         cluster_slots: Arc<ClusterSlots>,
-        untrusted_entry_notifier: Option<UntrustedEntryNotifierArc>,
     ) -> Result<Self, String> {
         let TvuSockets {
             repair: repair_socket,
@@ -324,7 +322,6 @@ impl Tvu {
             dumped_slots_sender,
             banking_tracer,
             popular_pruned_forks_receiver,
-            untrusted_entry_notifier,
         )?;
 
         let blockstore_cleanup_service = tvu_config.max_ledger_shreds.map(|max_ledger_shreds| {
@@ -512,9 +509,8 @@ pub mod tests {
             repair_quic_endpoint_sender,
             outstanding_repair_requests,
             cluster_slots,
-            None,
         )
-            .expect("assume success");
+        .expect("assume success");
         exit.store(true, Ordering::Relaxed);
         tvu.join().unwrap();
         poh_service.join().unwrap();

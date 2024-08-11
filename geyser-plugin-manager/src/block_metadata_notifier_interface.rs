@@ -3,7 +3,6 @@ use {
     solana_sdk::{clock::UnixTimestamp, pubkey::Pubkey},
     std::sync::{Arc, RwLock},
 };
-use solana_rpc::transaction_notifier_interface::TransactionNotifier;
 
 /// Interface for notifying block metadata changes
 pub trait BlockMetadataNotifier {

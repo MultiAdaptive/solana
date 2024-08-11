@@ -120,7 +120,6 @@ members = [
     "zk-token-sdk",
     "accountsdb-plugin-postgres",
     "smt",
-    "fraud-proof",
 ]
 
 exclude = ["programs/sbf"]
@@ -335,7 +334,6 @@ solana-cost-model = { path = "cost-model", version = "=1.18.15" }
 solana-download-utils = { path = "download-utils", version = "=1.18.15" }
 solana-entry = { path = "entry", version = "=1.18.15" }
 solana-smt = { path = "smt", version = "=1.18.15" }
-solana-fraud-proof = { path = "fraud-proof", version = "=1.18.15" }
 solana-faucet = { path = "faucet", version = "=1.18.15" }
 solana-frozen-abi = { path = "frozen-abi", version = "=1.18.15" }
 solana-frozen-abi-macro = { path = "frozen-abi/macro", version = "=1.18.15" }

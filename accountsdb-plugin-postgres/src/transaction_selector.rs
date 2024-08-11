@@ -63,7 +63,7 @@ impl TransactionSelector {
     pub fn is_transaction_selected(
         &self,
         is_vote: bool,
-        mentioned_addresses: Box<dyn Iterator<Item=&Pubkey> + '_>,
+        mentioned_addresses: Box<dyn Iterator<Item = &Pubkey> + '_>,
     ) -> bool {
         if !self.is_enabled() {
             return false;

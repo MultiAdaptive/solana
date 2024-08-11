@@ -1,7 +1,10 @@
-use crate::rocks_store::*;
 use blake2b_rs::Blake2bBuilder;
+use sparse_merkle_tree::{blake2b::Blake2bHasher, H256, SparseMerkleTree, traits::Value};
+use sparse_merkle_tree::default_store::DefaultStore;
+
 use solana_sdk::{account::Account, pubkey::Pubkey};
-use sparse_merkle_tree::{blake2b::Blake2bHasher, traits::Value, SparseMerkleTree, H256};
+
+use crate::rocks_store::*;
 
 pub const PUBKEY_BYTES: usize = 32;
 
@@ -110,4 +113,5 @@ impl Into<Vec<u8>> for SMTAccount {
     }
 }
 
-pub type RocksStoreSMT = SparseMerkleTree<Blake2bHasher, SMTAccount, RocksStore<SMTAccount>>;
+pub type DatabaseStoreAccountSMT = SparseMerkleTree<Blake2bHasher, SMTAccount, RocksStore<SMTAccount>>;
+pub type MemoryStoreAccountSMT = SparseMerkleTree<Blake2bHasher, SMTAccount, DefaultStore<SMTAccount>>;

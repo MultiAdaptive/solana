@@ -1,15 +1,13 @@
-/// Managing the Geyser plugins
 use {
     jsonrpc_core::{ErrorCode, Result as JsonRpcResult},
     jsonrpc_server_utils::tokio::sync::oneshot::Sender as OneShotSender,
-    libloading::{Library, Symbol},
+    libloading::Library,
     log::*,
     solana_geyser_plugin_interface::geyser_plugin_interface::GeyserPlugin,
     std::{
         ops::{Deref, DerefMut},
         path::Path,
     },
-    std::error::Error,
 };
 
 #[derive(Debug)]
@@ -96,15 +94,6 @@ impl GeyserPluginManager {
     pub fn entry_notifications_enabled(&self) -> bool {
         for plugin in &self.plugins {
             if plugin.entry_notifications_enabled() {
-                return true;
-            }
-        }
-        false
-    }
-
-    pub fn untrusted_entry_notifications_enabled(&self) -> bool {
-        for plugin in &self.plugins {
-            if plugin.untrusted_entry_notifications_enabled() {
                 return true;
             }
         }
