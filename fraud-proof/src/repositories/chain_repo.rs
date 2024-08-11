@@ -1,63 +1,38 @@
-use diesel::prelude::*;
-use diesel::row::NamedRow;
-use diesel::RunQueryDsl;
+use log::error;
+use rocksdb::DB;
+use std::i64;
+use std::rc::Rc;
+use std::sync::{Arc, RwLock};
 
-use crate::common::node_error::NodeError;
-use crate::entities::chain_entity::table_chain::column_slot;
-use crate::entities::chain_entity::table_chain::dsl::table_chain;
-use crate::models::chain_model::{ChainRecord, ChainRow};
-use crate::utils::store_util::{PgConnectionPool, PooledPgConnection};
-use crate::utils::uuid_util::generate_uuid;
-
-pub struct ChainRepo {
-    pub pool: Box<PgConnectionPool>,
+pub struct ChainRepo<'a> {
+    pub db: &'a Arc<RwLock<DB>>,
 }
 
-impl ChainRepo {
-    pub fn show(&self) -> Result<ChainRow, NodeError> {
-        let conn: &mut PooledPgConnection = &mut self.pool.get()?;
-
-        let results = table_chain
-            .order(column_slot.desc())
-            .limit(1)
-            .load::<ChainRow>(conn)
-            .expect("Error loading chain");
-
-        if results.is_empty() {
-            return Err(
-                NodeError::new(generate_uuid(),
-                               "Couldn't find query last slot from database".to_string(),
-                )
-            );
-        }
-
-        let row = results[0].clone();
-
-        Ok(row)
+impl<'a> ChainRepo<'a> {
+    pub fn upsert(&self, value: i64) {
+        let key = b"slot";
+        let value_bytes = value.to_le_bytes(); // 序列化为字节数组 (little-endian)
+        let db_write = self.db.write().unwrap(); // 获取写入锁
+        db_write.put(key, value_bytes).unwrap();
     }
 
-    pub fn upsert(&self, record: ChainRecord) -> Result<ChainRow, NodeError> {
-        let conn: &mut PooledPgConnection = &mut self.pool.get()?;
-
-        let row: ChainRow;
-
-        let count: i64 = table_chain
-            .count()
-            .get_result(conn)
-            .expect("Error count table chain");
-
-        if count == 0 {
-            row = diesel::insert_into(table_chain)
-                .values(&record)
-                .get_result::<ChainRow>(conn)?;
-        } else {
-            row = diesel::update(table_chain)
-                .set((
-                    column_slot.eq(record.column_slot),
-                ))
-                .get_result::<ChainRow>(conn)?;
+    pub fn show(&self) -> Option<i64> {
+        let key = b"slot";
+        let db_read = self.db.read().unwrap(); // 获取读取锁
+        match db_read.get(key) {
+            Ok(Some(value)) => {
+                if value.len() == 8 { // 检查字节数组长度是否为 8
+                    Some(i64::from_le_bytes(value.as_slice().try_into().unwrap())) // 反序列化为 i64
+                } else {
+                    None
+                }
+            }
+            Ok(None) => None,
+            Err(e) => {
+                error!("get slot from rocksdb fail. err: {}", e);
+                None
+            }
         }
-
-        Ok(row)
     }
 }
+

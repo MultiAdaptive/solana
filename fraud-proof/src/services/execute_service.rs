@@ -3,13 +3,14 @@ use crate::common::node_error::NodeError;
 use crate::contract::chain_brief::ChainBrief;
 use crate::models::account_audit_row::AccountAuditRow;
 use crate::models::brief_model::convert_chain_briefs_to_brief_records;
-use crate::models::chain_model::ChainRecord;
 use crate::models::transaction_model::TransactionRow;
 use crate::repositories::account_audit_repo::AccountAuditRepo;
 use crate::repositories::block_repo::BlockRepo;
 use crate::repositories::brief_repo::BriefRepo;
 use crate::repositories::chain_repo::ChainRepo;
 use crate::repositories::transaction_repo::TransactionRepo;
+use crate::smt::account_smt::{DatabaseStoreAccountSMT, MemoryStoreAccountSMT, SMTAccount};
+use crate::smt::rocks_store::RocksStore;
 use crate::utils::account_util::compute_ha;
 use crate::utils::store_util::{create_one, create_pool, PgConnectionPool};
 use crate::utils::uuid_util::generate_uuid;
@@ -22,12 +23,11 @@ use solana_sdk::signature::Signature;
 use std::collections::{BTreeMap, HashMap};
 use std::path::Path;
 use std::sync::{Arc, RwLock};
-use crate::smt::account_smt::{DatabaseStoreAccountSMT, MemoryStoreAccountSMT, SMTAccount};
-use crate::smt::rocks_store::RocksStore;
 
 pub struct ExecuteService {
     client_pool: PgConnectionPool,
     client_one: Client,
+    rocksdb: Arc<RwLock<DB>>,
     database_store_account_smt: Arc<RwLock<DatabaseStoreAccountSMT>>,
     memory_store_account_smt: Arc<RwLock<MemoryStoreAccountSMT>>,
     initial_slot: u64,
@@ -42,9 +42,12 @@ impl ExecuteService {
 
         let one = create_one(config.to_owned());
 
-        let dir = Path::new("./rocks-smt");
-        let db = DB::open_default(dir).unwrap();
-        let rocksdb_store = RocksStore::new(db);
+        let account_dir = Path::new("./rocks-smt/account");
+        let account_db = DB::open_default(account_dir).unwrap();
+        let rocksdb_store = RocksStore::new(account_db);
+        let slot_dir = Path::new("./rocks-smt/slot");
+        let slot_db = DB::open_default(slot_dir).unwrap();
+        let rocksdb = Arc::new(RwLock::new(slot_db));
         let database_store_account_sparse_merkle_tree = DatabaseStoreAccountSMT::new_with_store(rocksdb_store).unwrap();
         let db_smt = Arc::new(RwLock::new(database_store_account_sparse_merkle_tree));
         let memory_store_account_sparse_merkle_tree = MemoryStoreAccountSMT::new_with_store(Default::default()).unwrap();
@@ -55,6 +58,7 @@ impl ExecuteService {
         Ok(Self {
             client_pool: pool,
             client_one: one,
+            rocksdb,
             database_store_account_smt: db_smt,
             memory_store_account_smt: mm_smt,
             // The slot 0 and slot 1 are initial of blockchain, skip them.
@@ -116,16 +120,11 @@ impl ExecuteService {
     }
 
     pub fn get_last_slot(&self) -> Result<i64, NodeError> {
-        let repo = ChainRepo { pool: Box::from(self.client_pool.to_owned()) };
+        let mut repo = ChainRepo { db: &self.rocksdb };
 
-        match repo.show() {
-            Ok(row) => {
-                Ok(row.slot)
-            }
-            Err(e) => {
-                Ok(0)
-            }
-        }
+        let slot = repo.show().unwrap_or(0);
+
+        Ok(slot)
     }
 
     pub fn get_max_slot(&mut self) -> Result<i64, NodeError> {
@@ -141,17 +140,10 @@ impl ExecuteService {
         }
     }
 
-    pub fn update_last_slot(&self, slot: i64) -> Result<i64, NodeError> {
-        let repo = ChainRepo { pool: Box::from(self.client_pool.to_owned()) };
+    pub fn update_last_slot(&self, slot: i64) {
+        let mut repo = ChainRepo { db: &self.rocksdb };
 
-        let record = ChainRecord {
-            column_slot: slot,
-        };
-        let row = repo.upsert(record)?;
-
-        let last_slot = row.slot;
-
-        Ok(last_slot)
+        repo.upsert(slot);
     }
 
     pub fn insert_briefs(&self, chain_briefs: Vec<ChainBrief>) -> Result<u32, NodeError> {

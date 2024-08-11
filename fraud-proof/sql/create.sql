@@ -1,10 +1,3 @@
-CREATE TABLE IF NOT EXISTS chain
-(
-    id             bigserial  PRIMARY KEY,
-    slot bigint   UNIQUE default 0 not null,
-    updated_on timestamp default current_timestamp
-);
-
 CREATE TABLE IF NOT EXISTS brief
 (
     id         bigserial PRIMARY KEY,
