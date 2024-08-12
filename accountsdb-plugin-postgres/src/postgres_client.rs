@@ -57,6 +57,7 @@ struct PostgresSqlClientWrapper {
     update_transaction_log_stmt: Statement,
     update_block_metadata_stmt: Statement,
     insert_account_audit_stmt: Option<Statement>,
+    insert_account_inspect_stmt: Option<Statement>,
     insert_token_owner_index_stmt: Option<Statement>,
     insert_token_mint_index_stmt: Option<Statement>,
     bulk_insert_token_owner_index_stmt: Option<Statement>,
@@ -457,6 +458,28 @@ impl SimplePostgresClient {
         }
     }
 
+    fn build_account_inspect_insert_statement(
+        client: &mut Client,
+        config: &GeyserPluginPostgresConfig,
+    ) -> Result<Statement, GeyserPluginError> {
+        let stmt = "INSERT INTO account_inspect (pubkey, slot, owner, lamports, executable, rent_epoch, data, write_version, updated_on, txn_signature) \
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)";
+
+        let stmt = client.prepare(stmt);
+
+        match stmt {
+            Err(err) => {
+                Err(GeyserPluginError::Custom(Box::new(GeyserPluginPostgresError::DataSchemaError {
+                    msg: format!(
+                        "Error in preparing for the account_inspect update PostgreSQL database: {} host: {:?} user: {:?} config: {:?}",
+                        err, config.host, config.user, config
+                    ),
+                })))
+            }
+            Ok(stmt) => Ok(stmt),
+        }
+    }
+
     fn build_slot_upsert_statement_with_parent(
         client: &mut Client,
         config: &GeyserPluginPostgresConfig,
@@ -539,12 +562,50 @@ impl SimplePostgresClient {
         Ok(())
     }
 
+    /// Internal function for inserting an account into account_inspect table.
+    fn insert_account_inspect(
+        account: &DbAccountInfo,
+        statement: &Statement,
+        client: &mut Client,
+    ) -> Result<(), GeyserPluginError> {
+        let lamports = account.lamports();
+        let rent_epoch = account.rent_epoch();
+        let updated_on = Utc::now().naive_utc();
+        let result = client.execute(
+            statement,
+            &[
+                &account.pubkey(),
+                &account.slot,
+                &account.owner(),
+                &lamports,
+                &account.executable(),
+                &rent_epoch,
+                &account.data(),
+                &account.write_version(),
+                &updated_on,
+                &account.txn_signature(),
+            ],
+        );
+
+        if let Err(err) = result {
+            let msg = format!(
+                "Failed to persist the insert of account_inspect to the PostgreSQL database. Error: {:?}",
+                err
+            );
+            error!("{}", msg);
+            return Err(GeyserPluginError::AccountsUpdateError { msg });
+        }
+        Ok(())
+    }
+
+
     /// Internal function for updating or inserting a single account
     fn upsert_account_internal(
         account: &DbAccountInfo,
         statement: &Statement,
         client: &mut Client,
         insert_account_audit_stmt: &Option<Statement>,
+        insert_account_inspect_stmt: &Option<Statement>,
         insert_token_owner_index_stmt: &Option<Statement>,
         insert_token_mint_index_stmt: &Option<Statement>,
     ) -> Result<(), GeyserPluginError> {
@@ -574,11 +635,20 @@ impl SimplePostgresClient {
             );
             error!("{}", msg);
             return Err(GeyserPluginError::AccountsUpdateError { msg });
-        } else if result.unwrap() == 0 && insert_account_audit_stmt.is_some() {
-            // If no records modified (inserted or updated), it is because the account is updated
-            // at an older slot, insert the record directly into the account_audit table.
-            let statement = insert_account_audit_stmt.as_ref().unwrap();
-            Self::insert_account_audit(account, statement, client)?;
+        } else if result.unwrap() == 0 {
+            if insert_account_audit_stmt.is_some() {
+                // If no records modified (inserted or updated), it is because the account is updated
+                // at an older slot, insert the record directly into the account_audit table.
+                let statement = insert_account_audit_stmt.as_ref().unwrap();
+                Self::insert_account_audit(account, statement, client)?;
+            }
+
+            if insert_account_inspect_stmt.is_some() {
+                // If no records modified (inserted or updated), it is because the account is updated
+                // at an older slot, insert the record directly into the account_inspect table.
+                let statement = insert_account_inspect_stmt.as_ref().unwrap();
+                Self::insert_account_inspect(account, statement, client)?;
+            }
         }
 
         if let Some(insert_token_owner_index_stmt) = insert_token_owner_index_stmt {
@@ -596,6 +666,7 @@ impl SimplePostgresClient {
     fn upsert_account(&mut self, account: &DbAccountInfo) -> Result<(), GeyserPluginError> {
         let client = self.client.get_mut().unwrap();
         let insert_account_audit_stmt = &client.insert_account_audit_stmt;
+        let insert_account_inspect_stmt = &client.insert_account_inspect_stmt;
         let statement = &client.update_account_stmt;
         let insert_token_owner_index_stmt = &client.insert_token_owner_index_stmt;
         let insert_token_mint_index_stmt = &client.insert_token_mint_index_stmt;
@@ -605,6 +676,7 @@ impl SimplePostgresClient {
             statement,
             client,
             insert_account_audit_stmt,
+            insert_account_inspect_stmt,
             insert_token_owner_index_stmt,
             insert_token_mint_index_stmt,
         )?;
@@ -692,6 +764,7 @@ impl SimplePostgresClient {
     fn flush_buffered_writes(&mut self) -> Result<(), GeyserPluginError> {
         let client = self.client.get_mut().unwrap();
         let insert_account_audit_stmt = &client.insert_account_audit_stmt;
+        let insert_account_inspect_stmt = &client.insert_account_inspect_stmt;
         let statement = &client.update_account_stmt;
         let insert_token_owner_index_stmt = &client.insert_token_owner_index_stmt;
         let insert_token_mint_index_stmt = &client.insert_token_mint_index_stmt;
@@ -704,6 +777,7 @@ impl SimplePostgresClient {
                 statement,
                 client,
                 insert_account_audit_stmt,
+                insert_account_inspect_stmt,
                 insert_token_owner_index_stmt,
                 insert_token_mint_index_stmt,
             )?;
@@ -798,6 +872,13 @@ impl SimplePostgresClient {
             None
         };
 
+        let insert_account_inspect_stmt = if store_account_historical_data {
+            let stmt = Self::build_account_inspect_insert_statement(&mut client, config)?;
+            Some(stmt)
+        } else {
+            None
+        };
+
         let bulk_insert_token_owner_index_stmt = if let Some(true) = config.index_token_owner {
             let stmt = Self::build_bulk_token_owner_index_insert_statement(&mut client, config)?;
             Some(stmt)
@@ -843,6 +924,7 @@ impl SimplePostgresClient {
                 update_transaction_log_stmt,
                 update_block_metadata_stmt,
                 insert_account_audit_stmt,
+                insert_account_inspect_stmt,
                 insert_token_owner_index_stmt,
                 insert_token_mint_index_stmt,
                 bulk_insert_token_owner_index_stmt,
