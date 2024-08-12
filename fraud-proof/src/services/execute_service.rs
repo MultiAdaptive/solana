@@ -277,7 +277,7 @@ impl ExecuteService {
             }
         });
 
-        return kvs;
+        kvs
     }
 }
 
