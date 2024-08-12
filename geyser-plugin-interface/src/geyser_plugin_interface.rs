@@ -292,6 +292,10 @@ pub enum GeyserPluginError {
     #[error("Error updating block. Error message: ({msg})")]
     BlockUpdateError { msg: String },
 
+    /// Error when updating the entry.
+    #[error("Error updating entry. Error message: ({msg})")]
+    EntryUpdateError { msg: String },
+
     /// Error when notify end of startup
     #[error("Error notifying end of startup. Error message: ({msg})")]
     EndOfStartupNotifyError { msg: String },
@@ -446,4 +450,6 @@ pub trait GeyserPlugin: Any + Send + Sync + std::fmt::Debug {
     fn entry_notifications_enabled(&self) -> bool {
         false
     }
+
+    fn last_insert_entry(&self) -> u64 { 0 }
 }

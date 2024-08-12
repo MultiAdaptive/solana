@@ -3,6 +3,7 @@ use {
     crate::{
         accounts_selector::AccountsSelector,
         postgres_client::{ParallelPostgresClient, PostgresClientBuilder},
+        entry_selector::EntrySelector,
         transaction_selector::TransactionSelector,
     },
     bs58,
@@ -18,13 +19,16 @@ use {
     std::{fs::File, io::Read},
     thiserror::Error,
 };
+use solana_geyser_plugin_interface::geyser_plugin_interface::ReplicaEntryInfoVersions;
 
 #[derive(Default)]
 pub struct GeyserPluginPostgres {
     parallel_client: Option<ParallelPostgresClient>,
     accounts_selector: Option<AccountsSelector>,
     transaction_selector: Option<TransactionSelector>,
+    entry_selector: Option<EntrySelector>,
     batch_starting_slot: Option<u64>,
+    entry_starting_slot: Option<u64>,
 }
 
 impl std::fmt::Debug for GeyserPluginPostgres {
@@ -42,8 +46,10 @@ pub struct GeyserPluginPostgresConfig {
     /// The user name of the PostgreSQL server.
     pub user: Option<String>,
 
+    /// The password of the PostgreSQL server.
     pub password: Option<String>,
 
+    /// The database name of the PostgreSQL server.
     pub dbname: Option<String>,
 
     /// The port number of the PostgreSQL database, the default is 5432
@@ -186,6 +192,7 @@ impl GeyserPlugin for GeyserPluginPostgres {
         let result: serde_json::Value = serde_json::from_str(&contents).unwrap();
         self.accounts_selector = Some(Self::create_accounts_selector_from_config(&result));
         self.transaction_selector = Some(Self::create_transaction_selector_from_config(&result));
+        self.entry_selector = Some(Self::create_entry_selector_from_config(&result));
 
         let config: GeyserPluginPostgresConfig =
             serde_json::from_str(&contents).map_err(|err| {
@@ -197,10 +204,11 @@ impl GeyserPlugin for GeyserPluginPostgres {
                 }
             })?;
 
-        let (parallel_client, batch_optimize_by_skiping_older_slots) =
+        let (parallel_client, batch_optimize_by_skiping_older_slots,entry_starting_slot) =
             PostgresClientBuilder::build_parallel_postgres_client(&config)?;
         self.parallel_client = Some(parallel_client);
         self.batch_starting_slot = batch_optimize_by_skiping_older_slots;
+        self.entry_starting_slot = entry_starting_slot;
 
         Ok(())
     }
@@ -449,6 +457,39 @@ impl GeyserPlugin for GeyserPluginPostgres {
         Ok(())
     }
 
+    fn notify_entry(&self, entry_info: ReplicaEntryInfoVersions) -> Result<()> {
+        match &self.parallel_client {
+            None => {
+                return Err(GeyserPluginError::Custom(Box::new(
+                    GeyserPluginPostgresError::DataStoreConnectionError {
+                        msg: "There is no connection to the PostgreSQL database.".to_string(),
+                    },
+                )));
+            }
+            Some(client) => match entry_info {
+                ReplicaEntryInfoVersions::V0_0_2(entry_info) => {
+                    let result = client.update_entry(entry_info);
+                    if let Err(err) = result {
+                        return Err(GeyserPluginError::EntryUpdateError {
+                            msg: format!(
+                                "Failed to persist entry to the PostgreSQL database. Error: {:?}",
+                                err
+                            ),
+                        });
+                    }
+                }
+                _ => {
+                    return Err(GeyserPluginError::EntryUpdateError {
+                        msg: "Failed to persist entry to the PostgreSQL database. Unsupported format.".to_string()
+                    });
+                }
+            },
+        }
+
+        Ok(())
+    }
+
+
     /// Check if the plugin is interested in account data
     /// Default is true -- if the plugin is not interested in
     /// account data, please return false.
@@ -464,6 +505,19 @@ impl GeyserPlugin for GeyserPluginPostgres {
             .as_ref()
             .map_or_else(|| false, |selector| selector.is_enabled())
     }
+
+    /// Check if the plugin is interested in shred data
+    fn entry_notifications_enabled(&self) -> bool {
+        self.entry_selector
+            .as_ref()
+            .map_or_else(|| false, |selector| selector.is_enabled())
+    }
+
+
+    fn last_insert_entry(&self) -> u64 {
+        self.entry_starting_slot.unwrap()
+    }
+
 }
 
 impl GeyserPluginPostgres {
@@ -520,6 +574,14 @@ impl GeyserPluginPostgres {
         }
     }
 
+    fn create_entry_selector_from_config(config: &serde_json::Value) -> EntrySelector {
+        let entry_selector = &config["entry_selector"];
+        if entry_selector.is_null() {
+            EntrySelector::default()
+        } else {
+            EntrySelector::new(true)
+        }
+    }
     pub fn new() -> Self {
         Self::default()
     }
@@ -548,5 +610,14 @@ pub(crate) mod tests {
 
         let config: serde_json::Value = serde_json::from_str(config).unwrap();
         GeyserPluginPostgres::create_accounts_selector_from_config(&config);
+    }
+
+    #[test]
+    fn test_entry_selector_from_config() {
+        let config = "{\"entry_selector\" : true}}";
+
+        let config: serde_json::Value = serde_json::from_str(config).unwrap();
+        let entry_selector = GeyserPluginPostgres::create_entry_selector_from_config(&config);
+        assert_eq!(true, entry_selector.is_enabled());
     }
 }
