@@ -184,14 +184,14 @@ impl ExecuteService {
         let transactions = self.get_transactions(start_slot, end_slot)?;
 
         let mut slot_to_transactions: BTreeMap<i64, Vec<TransactionRow>> = BTreeMap::new();
-        for transaction in transactions {
+        for transaction in transactions.clone() {
             slot_to_transactions.entry(transaction.slot).or_insert_with(Vec::new).push(transaction);
         }
 
         let account_audits = self.get_account_audits(start_slot, end_slot)?;
 
         let mut slot_to_account_audits: BTreeMap<i64, Vec<AccountAuditRow>> = BTreeMap::new();
-        for account_audit in account_audits {
+        for account_audit in account_audits.clone() {
             slot_to_account_audits.entry(account_audit.slot).or_insert_with(Vec::new).push(account_audit);
         }
 
@@ -260,11 +260,9 @@ impl ExecuteService {
 
         self.insert_briefs(briefs.clone()).expect("insert briefs failed");
 
-        for (slot, account_audits) in slot_to_account_audits.clone() {
-            let kvs = self.convert(account_audits);
-            self.database_store_account_smt.write().unwrap().update_all(kvs).unwrap();
-            self.update_last_slot(slot);
-        }
+        let kvs = self.convert(account_audits.clone());
+        self.database_store_account_smt.write().unwrap().update_all(kvs).unwrap();
+        self.update_last_slot(end_slot);
 
         Ok(briefs)
     }
