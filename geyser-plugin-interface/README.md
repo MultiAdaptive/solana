@@ -22,4 +22,4 @@ an external PostgreSQL database.
 
 More information about Solana is available in the [Solana documentation](https://solana.com/docs).
 
-Still have questions?  Ask us on [Stack Exchange](https://sola.na/sse)
+Still have questions? Ask us on [Stack Exchange](https://sola.na/sse)

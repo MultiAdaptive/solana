@@ -13,6 +13,7 @@ use {
     thiserror::Error,
 };
 
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[repr(C)]
 /// Information about an account being updated
@@ -292,13 +293,21 @@ pub enum GeyserPluginError {
     #[error("Error updating block. Error message: ({msg})")]
     BlockUpdateError { msg: String },
 
+    /// Error when notify end of startup
+    #[error("Error notifying end of startup. Error message: ({msg})")]
+    EndOfStartupNotifyError { msg: String },
+
     /// Error when updating the entry.
     #[error("Error updating entry. Error message: ({msg})")]
     EntryUpdateError { msg: String },
 
-    /// Error when notify end of startup
-    #[error("Error notifying end of startup. Error message: ({msg})")]
-    EndOfStartupNotifyError { msg: String },
+    /// Error when updating the merkle tree root.
+    #[error("Error updating smt root. Error message: ({msg})")]
+    SMTUpdateError { msg: String },
+
+    /// Error when check the merkle tree root.
+    #[error("Error check smt root. Error message: ({msg})")]
+    SMTCheckError { msg: String },
 }
 
 /// The current status of a slot

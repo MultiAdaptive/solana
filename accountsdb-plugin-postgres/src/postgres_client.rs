@@ -1,42 +1,55 @@
 #![allow(clippy::arithmetic_side_effects)]
 
-mod postgres_client_account_index;
-mod postgres_client_block_metadata;
-mod postgres_client_transaction;
+use std::collections::{BTreeMap, HashMap};
 
-
+use solana_smt::account_smt::MemoryStoreAccountSMT;
 /// A concurrent implementation for writing accounts into the PostgreSQL in parallel.
 use {
     crate::{
         geyser_plugin_postgres::{GeyserPluginPostgresConfig, GeyserPluginPostgresError},
         postgres_client::postgres_client_account_index::TokenSecondaryIndexEntry,
     },
+    blake3::{self, Hash},
     chrono::Utc,
     crossbeam_channel::{bounded, Receiver, RecvTimeoutError, Sender},
     log::*,
     openssl::ssl::{SslConnector, SslFiletype, SslMethod},
     postgres::{Client, NoTls, Statement},
     postgres_client_block_metadata::DbBlockInfo,
-    postgres_client_transaction::LogTransactionRequest,
     postgres_client_entry::DbEntryInfo,
+    postgres_client_transaction::LogTransactionRequest,
     postgres_openssl::MakeTlsConnector,
+    rocksdb::*,
     solana_geyser_plugin_interface::geyser_plugin_interface::{
         GeyserPluginError, ReplicaAccountInfoV3, ReplicaBlockInfoV3, ReplicaEntryInfoV2, SlotStatus,
     },
     solana_measure::measure::Measure,
     solana_metrics::*,
-    solana_sdk::timing::AtomicInterval,
+    solana_sdk::{pubkey::Pubkey, timing::AtomicInterval},
+    solana_smt::{
+        account_smt::{DatabaseStoreAccountSMT, SMTAccount},
+        rocks_store::RocksStore,
+    },
+    sparse_merkle_tree::H256,
     std::{
         collections::HashSet,
+        path::Path,
         sync::{
             atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering},
-            Arc, Mutex,
+            Arc, Mutex, RwLock,
         },
         thread::{self, sleep, Builder, JoinHandle},
         time::Duration,
     },
     tokio_postgres::types,
 };
+
+use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
+
+mod postgres_client_account_index;
+mod postgres_client_block_metadata;
+mod postgres_client_transaction;
+mod postgres_client_account_smt;
 mod postgres_client_entry;
 
 /// The maximum asynchronous requests allowed in the channel to avoid excessive
@@ -65,6 +78,7 @@ struct PostgresSqlClientWrapper {
     bulk_insert_token_owner_index_stmt: Option<Statement>,
     bulk_insert_token_mint_index_stmt: Option<Statement>,
     update_entry_stmt: Statement,
+    update_smt_tree_stmt: Statement,
 }
 
 pub struct SimplePostgresClient {
@@ -78,7 +92,7 @@ pub struct SimplePostgresClient {
     client: Mutex<PostgresSqlClientWrapper>,
 }
 
-struct PostgresClientWorker {
+struct ParallelPostgresClientWorker {
     client: SimplePostgresClient,
     /// Indicating if accounts notification during startup is done.
     is_startup_done: bool,
@@ -125,6 +139,17 @@ impl DbAccountInfo {
             slot: slot as i64,
             write_version: account.write_version(),
             txn_signature: account.txn_signature().map(|v| v.to_vec()),
+        }
+    }
+
+    pub fn to_smt_account(&self) -> SMTAccount {
+        SMTAccount {
+            pubkey: Pubkey::try_from(self.pubkey.clone().as_slice()).unwrap(),
+            lamports: self.lamports.clone(),
+            owner: Pubkey::try_from(self.owner.clone().as_slice()).unwrap(),
+            executable: self.executable.clone(),
+            rent_epoch: self.rent_epoch.clone(),
+            data: self.data.clone(),
         }
     }
 }
@@ -215,7 +240,7 @@ pub trait PostgresClient {
 
     fn update_account(
         &mut self,
-        account: DbAccountInfo,
+        account_info: DbAccountInfo,
         is_startup: bool,
     ) -> Result<(), GeyserPluginError>;
 
@@ -863,6 +888,7 @@ impl SimplePostgresClient {
         let update_block_metadata_stmt =
             Self::build_block_metadata_upsert_statement(&mut client, config)?;
         let update_entry_stmt = Self::build_entry_upsert_statement(&mut client, config)?;
+        let update_smt_tree_stmt = Self::build_smt_tree_upsert_statement(&mut client, config)?;
 
         let batch_size = config
             .batch_size
@@ -937,6 +963,7 @@ impl SimplePostgresClient {
                 bulk_insert_token_owner_index_stmt,
                 bulk_insert_token_mint_index_stmt,
                 update_entry_stmt,
+                update_smt_tree_stmt,
             }),
             index_token_owner: config.index_token_owner.unwrap_or_default(),
             index_token_mint: config.index_token_mint.unwrap_or(false),
@@ -993,27 +1020,26 @@ impl SimplePostgresClient {
             }
         }
     }
-
 }
 
 impl PostgresClient for SimplePostgresClient {
     fn update_account(
         &mut self,
-        account: DbAccountInfo,
+        account_info: DbAccountInfo,
         is_startup: bool,
     ) -> Result<(), GeyserPluginError> {
         trace!(
             "Updating account {} with owner {} at slot {}",
-            bs58::encode(account.pubkey()).into_string(),
-            bs58::encode(account.owner()).into_string(),
-            account.slot,
+            bs58::encode(account_info.pubkey()).into_string(),
+            bs58::encode(account_info.owner()).into_string(),
+            account_info.slot,
         );
         if !is_startup {
-            return self.upsert_account(&account);
+            return self.upsert_account(&account_info);
         }
 
-        self.slots_at_startup.insert(account.slot as u64);
-        self.insert_accounts_in_batch(account)
+        self.slots_at_startup.insert(account_info.slot as u64);
+        self.insert_accounts_in_batch(account_info)
     }
 
     fn update_slot_status(
@@ -1085,16 +1111,16 @@ enum DbWorkItem {
     UpdateEntry(Box<UpdateEntryRequest>),
 }
 
-impl PostgresClientWorker {
+impl ParallelPostgresClientWorker {
     fn new(config: GeyserPluginPostgresConfig) -> Result<Self, GeyserPluginError> {
         let result = SimplePostgresClient::new(&config);
         match result {
-            Ok(client) => Ok(PostgresClientWorker {
+            Ok(client) => Ok(ParallelPostgresClientWorker {
                 client,
                 is_startup_done: false,
             }),
             Err(err) => {
-                error!("Error in creating SimplePostgresClient: {}", err);
+                error!("Error in creating ParallelPostgresClientWorker: {}", err);
                 Err(err)
             }
         }
@@ -1232,7 +1258,7 @@ impl ParallelPostgresClient {
                         .panic_on_db_errors
                         .as_ref()
                         .unwrap_or(&DEFAULT_PANIC_ON_DB_ERROR);
-                    let result = PostgresClientWorker::new(config);
+                    let result = ParallelPostgresClientWorker::new(config);
 
                     match result {
                         Ok(mut worker) => {
@@ -1291,7 +1317,7 @@ impl ParallelPostgresClient {
     }
 
     pub fn update_account(
-        &self,
+        &mut self,
         account: &ReplicaAccountInfoV3,
         slot: u64,
         is_startup: bool,
@@ -1300,14 +1326,13 @@ impl ParallelPostgresClient {
             // we are not interested in accountsdb internal bookeeping updates
             return Ok(());
         }
-
         if self.last_report.should_update(30000) {
             datapoint_debug!(
                 "postgres-plugin-stats",
                 ("message-queue-length", self.sender.len() as i64, i64),
             );
         }
-        let mut measure = Measure::start("geyser-plugin-posgres-create-work-item");
+        let mut measure = Measure::start("geyser-plugin-postgres-create-work-item");
 
         let account_info = DbAccountInfo::new(account, slot);
         let wrk_item = DbWorkItem::UpdateAccount(Box::new(UpdateAccountRequest {
@@ -1318,13 +1343,13 @@ impl ParallelPostgresClient {
         measure.stop();
 
         inc_new_counter_debug!(
-            "geyser-plugin-posgres-create-work-item-us",
+            "geyser-plugin-postgres-create-work-item-us",
             measure.as_us() as usize,
             100000,
             100000
         );
 
-        let mut measure = Measure::start("geyser-plugin-posgres-send-msg");
+        let mut measure = Measure::start("geyser-plugin-postgres-send-msg");
 
         if let Err(err) = self.sender.send(wrk_item) {
             return Err(GeyserPluginError::AccountsUpdateError {
@@ -1338,7 +1363,7 @@ impl ParallelPostgresClient {
 
         measure.stop();
         inc_new_counter_debug!(
-            "geyser-plugin-posgres-send-msg-us",
+            "geyser-plugin-postgres-send-msg-us",
             measure.as_us() as usize,
             100000,
             100000
@@ -1365,6 +1390,7 @@ impl ParallelPostgresClient {
                 msg: format!("Failed to update the slot {:?}, error: {:?}", slot, err),
             });
         }
+
         Ok(())
     }
 
@@ -1379,6 +1405,7 @@ impl ParallelPostgresClient {
                 msg: format!("Failed to update the entry , error: {:?}", err),
             });
         }
+
         Ok(())
     }
 
@@ -1447,22 +1474,412 @@ impl PostgresClientBuilder {
                         "Set batch_optimize_by_skiping_older_slots to {}",
                         batch_slot_bound
                     );
+
                     Some(batch_slot_bound)
                 }
                 false => None,
             };
+        let entry_starting_slot = on_load_client.get_highest_entry_slot()?;
 
+        ParallelPostgresClient::new(config).map(|v| (v, batch_optimize_by_skiping_older_slots, Some(entry_starting_slot)))
+    }
 
-        let highest_entry_slot = on_load_client.get_highest_entry_slot().unwrap_or(0);
-        info!(
-            "Set entry_starting_slot to {}",
-            highest_entry_slot
-        );
-        let entry_starting_slot =Some(highest_entry_slot);
-
-        ParallelPostgresClient::new(config).map(|v| (v, batch_optimize_by_skiping_older_slots,entry_starting_slot))
+    pub fn build_sequence_postgres_client(
+        config: &GeyserPluginPostgresConfig,
+    ) -> Result<SequencePostgresClient, GeyserPluginError> {
+        SequencePostgresClient::new(config)
     }
 }
 
+/// SequenceClient, 1 recv, 1 worker thread
+#[allow(dead_code)]
+pub struct SequencePostgresClient {
+    worker: Option<JoinHandle<Result<(), GeyserPluginError>>>,
+    exit_worker: Arc<AtomicBool>,
+    sender: Sender<DbWorkItem>,
+    transaction_write_version: AtomicU64,
+}
+
+impl SequencePostgresClient {
+    pub fn new(config: &GeyserPluginPostgresConfig) -> Result<Self, GeyserPluginError> {
+        info!("Creating SequencePostgresClient...");
+        let (sender, receiver) = bounded(MAX_ASYNC_REQUESTS);
+        let exit_worker = Arc::new(AtomicBool::new(false));
+        let exit_clone = exit_worker.clone();
+        let mut load_client = SimplePostgresClient::new(&config).unwrap();
+        let config = config.clone();
+        let highest_slot = load_client.get_highest_available_slot().unwrap() as i64;
+        let account_dir = Path::new("./mm-smt/account");
+        let account_db = DB::open_default(account_dir).unwrap();
+        let rocksdb_store = RocksStore::new(account_db);
+        let slot_write_version_dir = Path::new("./mm-smt/slot_write_version");
+        let slot_write_version_db = DB::open_default(slot_write_version_dir).unwrap();
+        let slot_write_version_rocksdb = Arc::new(RwLock::new(slot_write_version_db));
+        let database_store_account_sparse_merkle_tree = DatabaseStoreAccountSMT::new_with_store(rocksdb_store).unwrap();
+        let start_root = hex::encode(database_store_account_sparse_merkle_tree.root().as_slice());
+        info!("start root of smt: {}", start_root);
+        let database_store_account_smt = Arc::new(RwLock::new(database_store_account_sparse_merkle_tree));
+        let memory_store_account_sparse_merkle_tree = MemoryStoreAccountSMT::new_with_store(Default::default()).unwrap();
+        let memory_store_account_smt = Arc::new(RwLock::new(memory_store_account_sparse_merkle_tree));
+
+        let worker = Builder::new()
+            .name("worker-sequence-account".to_string())
+            .spawn(move || -> Result<(), GeyserPluginError> {
+                let panic_on_db_errors = *config
+                    .panic_on_db_errors
+                    .as_ref()
+                    .unwrap_or(&DEFAULT_PANIC_ON_DB_ERROR);
+                let result = SequencePostgresClientWorker::new(
+                    config.clone(),
+                    database_store_account_smt,
+                    memory_store_account_smt,
+                    slot_write_version_rocksdb,
+                    highest_slot);
+
+                match result {
+                    Ok(mut worker) => {
+                        match worker.check_smt() {
+                            Ok(flag) => {
+                                if !flag {
+                                    error!("check SMT is false");
+                                    return Err(
+                                        GeyserPluginError::SMTCheckError {
+                                            msg: "check SMT is false".to_string()
+                                        },
+                                    );
+                                } else {
+                                    worker.do_work(
+                                        receiver,
+                                        exit_clone,
+                                        panic_on_db_errors)?;
+                                    Ok(())
+                                }
+                            }
+                            Err(e) => {
+                                error!("check SMT failed. err: {}", e);
+                                return Err(
+                                    GeyserPluginError::SMTCheckError {
+                                        msg: "check SMT failed".to_string()
+                                    },
+                                );
+                            }
+                        }
+                    }
+                    Err(err) => {
+                        error!("Error when making connection to database: ({})", err);
+                        if panic_on_db_errors {
+                            abort();
+                        }
+                        Err(err)
+                    }
+                }
+            })
+            .unwrap();
+
+        info!("Created SequencePostgresClient.");
+        Ok(Self {
+            worker: Some(worker),
+            exit_worker,
+            sender,
+            transaction_write_version: AtomicU64::default(),
+        })
+    }
+
+    pub fn join(&mut self) -> thread::Result<()> {
+        self.exit_worker.store(true, Ordering::Relaxed);
+        if let Some(handle) = self.worker.take() {
+            let result = handle.join();
+            if result.is_err() {
+                error!("The worker thread has failed: {:?}", result);
+            }
+        }
+        Ok(())
+    }
+
+    pub fn update_account(
+        &mut self,
+        account: &ReplicaAccountInfoV3,
+        slot: u64,
+        is_startup: bool,
+    ) -> Result<(), GeyserPluginError> {
+        if !is_startup && account.txn.is_none() {
+            // we are not interested in accountsdb internal bookeeping updates
+            return Ok(());
+        }
+
+        let account_info = DbAccountInfo::new(account, slot);
+        let wrk_item = DbWorkItem::UpdateAccount(Box::new(UpdateAccountRequest {
+            account_info: account_info.clone(),
+            is_startup,
+        }));
+
+        if let Err(err) = self.sender.send(wrk_item) {
+            return Err(GeyserPluginError::AccountsUpdateError {
+                msg: format!(
+                    "Failed to update the account {:?}, error: {:?}",
+                    bs58::encode(account.pubkey()).into_string(),
+                    err
+                ),
+            });
+        }
+
+        Ok(())
+    }
+}
+
+struct SequencePostgresClientWorker {
+    client: SimplePostgresClient,
+    database_store_account_smt: Arc<RwLock<DatabaseStoreAccountSMT>>,
+    memory_store_account_smt: Arc<RwLock<MemoryStoreAccountSMT>>,
+    slot_write_version_rocksdb: Arc<RwLock<DB>>,
+    highest_slot: i64,
+}
+
+impl SequencePostgresClientWorker {
+    fn new(
+        config: GeyserPluginPostgresConfig,
+        database_store_account_smt: Arc<RwLock<DatabaseStoreAccountSMT>>,
+        memory_store_account_smt: Arc<RwLock<MemoryStoreAccountSMT>>,
+        slot_write_version_rocksdb: Arc<RwLock<DB>>,
+        highest_slot: i64,
+    ) -> Result<Self, GeyserPluginError> {
+        let result = SimplePostgresClient::new(&config);
+        match result {
+            Ok(client) => Ok(SequencePostgresClientWorker {
+                client,
+                database_store_account_smt,
+                memory_store_account_smt,
+                slot_write_version_rocksdb,
+                highest_slot,
+            }),
+            Err(err) => {
+                error!("Error in creating SequencePostgresClientWorker: {}", err);
+                Err(err)
+            }
+        }
+    }
 
 
+    fn upsert_slot_write_version(&mut self,
+                                 slot: i64,
+                                 write_version: i64) {
+        let key = b"slot_write_version";
+        let slot_value = slot.to_le_bytes();
+        let write_version_value = write_version.to_le_bytes();
+        let value = [slot_value, write_version_value].concat(); // 将 slot 和 write_version 拼接成值
+
+        let db_write = self.slot_write_version_rocksdb.write().unwrap();
+        db_write.put(key, value).unwrap();
+    }
+
+    fn show_slot_write_version(&mut self) -> (i64, i64) {
+        let key = b"slot_write_version";
+        let db_read = self.slot_write_version_rocksdb.read().unwrap();
+        let (slot, write_version) = match db_read.get(key) {
+            Ok(Some(value)) => {
+                if value.len() == 16 {
+                    (i64::from_le_bytes(value.as_slice()[..8].try_into().unwrap()),
+                     i64::from_le_bytes(value.as_slice()[8..16].try_into().unwrap()),)
+                } else {
+                    (0, 0)
+                }
+            }
+            Ok(None) => (0, 0),
+            Err(e) => {
+                error!("get slot from rocksdb fail. err: {}", e);
+                (0, 0)
+            }
+        };
+
+        (slot, write_version)
+    }
+
+    // 将 slot 和 write_version 组合成键
+    fn create_key(&mut self, slot: i64, write_version: i64) -> Vec<u8> {
+        let mut key = b"leafs".to_vec();  // 使用 "leafs" 作为前缀
+        key.write_i64::<BigEndian>(slot).unwrap();
+        key.write_i64::<BigEndian>(write_version).unwrap();
+        key
+    }
+
+    fn upsert_key_hash_raw_acct(&mut self,
+                                slot: i64,
+                                write_version: i64,
+                                key_hash: H256,
+                                raw_acct: SMTAccount) {
+        let key = self.create_key(slot, write_version);
+
+        let key_hash_value = key_hash.as_slice();
+        let raw_acct_vec = raw_acct.to_vec();
+        let raw_acct_value = raw_acct_vec.as_slice();
+        let value = [key_hash_value.clone(), raw_acct_value.clone()].concat(); // 将 key_hash 和 raw_acct 拼接成值
+
+        let db_write = self.slot_write_version_rocksdb.write().unwrap();
+        db_write.put(key, value).unwrap();
+    }
+
+
+    // 读取所有数据，并按 slot 和 write_version 排序
+    fn show_key_hash_raw_acct(&mut self) -> Vec<(H256, SMTAccount)> {
+        let db_read = self.slot_write_version_rocksdb.read().unwrap();
+
+        let mut data_map = BTreeMap::new();
+
+        // 迭代数据库中的所有键值对
+        for item in db_read.iterator(rocksdb::IteratorMode::Start) {
+            match item {
+                Ok((key, value)) => {
+                    // 检查 key 是否以 "leafs" 开头
+                    let prefix = b"leafs";
+                    if key.starts_with(prefix) {
+                        // 解析 slot 和 write_version
+                        // 去掉前缀 "leafs"，再解析 slot 和 write_version
+                        let slot = (&key[prefix.len()..prefix.len() + 8]).read_i64::<BigEndian>().unwrap();
+                        let write_version = (&key[prefix.len() + 8..prefix.len() + 16]).read_i64::<BigEndian>().unwrap();
+
+                        // 从值中分离 key_hash 和 raw_acct
+                        let key_hash_bytes: [u8; 32] = value[..32].try_into().unwrap();
+                        let key_hash = H256::from(key_hash_bytes); //  key_hash 长度为 32 字节
+                        let raw_acct = SMTAccount::from(value[32..].to_vec()); // 剩下的部分是 raw_acct
+
+                        // 插入 BTreeMap 中，自动按照 (slot, write_version) 排序
+                        data_map.insert((slot, write_version), (key_hash, raw_acct));
+                    }
+                }
+                Err(e) => {
+                    error!("Error iterating through RocksDB: {:?}", e);
+                }
+            }
+        }
+
+        // 将排序后的数据转换为 Vec<(key_hash, raw_acct)>
+        data_map.into_values().collect()
+    }
+
+    pub fn check_smt(&mut self) -> Result<bool, GeyserPluginError> {
+        let kvs = self.show_key_hash_raw_acct();
+        self.memory_store_account_smt.write().unwrap().update_all(kvs).unwrap();
+
+        let database_store_account_smt_root = solana_sdk::hash::Hash::new(self.database_store_account_smt.read().unwrap().root().as_slice().clone()).to_string();
+        let memory_store_account_smt_root = solana_sdk::hash::Hash::new(self.memory_store_account_smt.read().unwrap().root().as_slice().clone()).to_string();
+
+        let flag = database_store_account_smt_root == memory_store_account_smt_root;
+
+        if flag {
+            info!("database smt root and memory smt root is same. database smt root: {:?}, memory smt root: {:?}",
+                database_store_account_smt_root,memory_store_account_smt_root);
+        } else {
+            error!("database smt root and memory smt root is different! database smt root: {:?}, memory smt root: {:?}",
+                database_store_account_smt_root,memory_store_account_smt_root);
+        }
+
+        Ok(flag)
+    }
+
+    fn do_work(
+        &mut self,
+        receiver: Receiver<DbWorkItem>,
+        exit_worker: Arc<AtomicBool>,
+        panic_on_db_errors: bool,
+    ) -> Result<(), GeyserPluginError> {
+        while !exit_worker.load(Ordering::Relaxed) {
+            let work = receiver.recv_timeout(Duration::from_millis(500));
+            match work {
+                Ok(work) => match work {
+                    DbWorkItem::UpdateAccount(request) => {
+                        let account_info = request.account_info;
+
+                        let (last_slot, last_write_version) = self.show_slot_write_version();
+
+                        if account_info.slot >= 2 {
+                            if (account_info.slot > last_slot) || ((account_info.slot == last_slot) && (account_info.write_version > last_write_version)) {
+                                let raw_acct = account_info.to_smt_account();
+
+                                let key_hash = raw_acct.smt_key();
+                                if let Err(err) = self.database_store_account_smt.write().unwrap().update(key_hash.clone(), raw_acct.clone()) {
+                                    error!("update database store account merkle tree key value err. {:?}",err);
+                                }
+                                if let Err(err) = self.memory_store_account_smt.write().unwrap().update(key_hash.clone(), raw_acct.clone()) {
+                                    error!("update memory store account merkle tree key value err. {:?}",err);
+                                }
+                                let database_store_account_smt_root = solana_sdk::hash::Hash::new(self.database_store_account_smt.read().unwrap().root().as_slice().clone()).to_string();
+                                let memory_store_account_smt_root = solana_sdk::hash::Hash::new(self.memory_store_account_smt.read().unwrap().root().as_slice().clone()).to_string();
+
+                                let flag = database_store_account_smt_root == memory_store_account_smt_root;
+
+                                if flag {
+                                    info!("database smt root and memory smt root is same. database smt root: {:?}, memory smt root: {:?}",
+                database_store_account_smt_root,memory_store_account_smt_root);
+                                } else {
+                                    error!("database smt root and memory smt root is different! database smt root: {:?}, memory smt root: {:?}",
+                database_store_account_smt_root,memory_store_account_smt_root);
+                                }
+
+                                if let Err(err) = self.client.update_merkle_tree_root(account_info.slot, database_store_account_smt_root.clone()) {
+                                    error!("update_merkle_tree_root err. {:?}",err);
+                                }
+                                self.upsert_slot_write_version(account_info.slot,
+                                                               account_info.write_version);
+                                self.upsert_key_hash_raw_acct(account_info.slot,
+                                                              account_info.write_version,
+                                                              key_hash.clone(),
+                                                              raw_acct.clone());
+                            }
+                        }
+                    }
+                    _ => {}
+                },
+                Err(err) => match err {
+                    RecvTimeoutError::Timeout => {
+                        continue;
+                    }
+                    _ => {
+                        error!("Error in receiving the item {:?}", err);
+                        if panic_on_db_errors {
+                            abort();
+                        }
+                        break;
+                    }
+                },
+            }
+        }
+        Ok(())
+    }
+}
+
+trait HashAccount {
+    /// hash DbAccountInfo pubkey to sparse-merkle-tree key
+    /// Todo: pure synchronous jellyfish-merkle-tree data structure with blake3 hash method
+    fn key_hash(&self) -> H256;
+
+    /// hash DbAccountInfo(without slot property) to sparse-merkle-tree value
+    fn value_hash(&self) -> H256;
+}
+
+impl HashAccount for DbAccountInfo {
+    fn key_hash(&self) -> H256 {
+        // Hash
+        let res: Hash = blake3::hash(&self.pubkey);
+        // Hash to H256
+        H256::from(*res.as_bytes())
+    }
+    fn value_hash(&self) -> H256 {
+        let mut hasher = blake3::Hasher::new();
+        if self.lamports == 0 {
+            let res = hasher.finalize();
+            return H256::from(*res.as_bytes());
+        }
+
+        hasher.update(&self.lamports.to_le_bytes());
+        hasher.update(&self.rent_epoch.to_le_bytes());
+        hasher.update(&self.data);
+
+        if self.executable {
+            hasher.update(&[1u8; 1]);
+        } else {
+            hasher.update(&[0u8; 1]);
+        }
+        let res = hasher.finalize();
+        H256::from(*res.as_bytes())
+    }
+}

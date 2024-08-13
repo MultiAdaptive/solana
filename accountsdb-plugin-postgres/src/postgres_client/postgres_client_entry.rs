@@ -1,14 +1,14 @@
+use solana_geyser_plugin_interface::geyser_plugin_interface::ReplicaEntryInfoV2;
 use {
-    chrono::Utc,
     crate::{
         geyser_plugin_postgres::{GeyserPluginPostgresConfig, GeyserPluginPostgresError},
         postgres_client::{SimplePostgresClient, UpdateEntryRequest},
     },
+    chrono::Utc,
     log::*,
     postgres::{Client, Statement},
     solana_geyser_plugin_interface::geyser_plugin_interface::GeyserPluginError,
 };
-use solana_geyser_plugin_interface::geyser_plugin_interface::ReplicaEntryInfoV2;
 
 #[derive(Clone, Debug)]
 pub struct DbEntryInfo {

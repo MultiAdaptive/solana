@@ -33,8 +33,13 @@ solana-metrics = { workspace = true }
 solana-runtime = { workspace = true }
 solana-sdk = { workspace = true }
 solana-transaction-status = { workspace = true }
+solana-smt = { workspace = true }
 thiserror = { workspace = true }
 tokio-postgres = { version = "0.7.10" }
+sparse-merkle-tree = { git = "https://github.com/MultiAdaptive/sparse-merkle-tree.git", commit = "1c53fd1bb27d8649ce1f2260af6fa43f7aee7436" }
+blake3 = { workspace = true }
+hex = { workspace = true }
+byteorder = { workspace = true }
 
 
 [dev-dependencies]
@@ -53,3 +58,7 @@ tempfile = { workspace = true }
 [package.metadata.docs.rs]
 targets = ["x86_64-unknown-linux-gnu"]
 
+[dependencies.rocksdb]
+version = "0.21.0"
+default-features = false
+features = ["lz4"]

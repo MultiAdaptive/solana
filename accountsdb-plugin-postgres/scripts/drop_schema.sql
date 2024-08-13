@@ -15,7 +15,6 @@ DROP TABLE block;
 DROP TABLE spl_token_owner_index;
 DROP TABLE spl_token_mint_index;
 DROP TABLE entry;
-DROP TABLE untrusted_entry;
 DROP TABLE merkle_tree;
 
 DROP TYPE "TransactionStatusMeta" CASCADE;
