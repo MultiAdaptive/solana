@@ -40,12 +40,10 @@ CREATE TABLE merkle_tree
     id         bigserial PRIMARY KEY,
     slot       BIGINT    UNIQUE NOT NULL,
     root_hash  VARCHAR(256) DEFAULT '',
-    hash_account       VARCHAR(256)  DEFAULT '',
-    transaction_number INT           DEFAULT 0,
     updated_on TIMESTAMP NOT NULL
 );
 CREATE INDEX index_merkle_tree_root_hash ON merkle_tree (root_hash);
-CREATE INDEX index_merkle_tree_hash_account ON merkle_tree (hash_account);
+
 
 -- Types for Transactions
 
@@ -267,20 +265,6 @@ CREATE TABLE IF NOT EXISTS entry
 CREATE INDEX index_entry_slot_entry_index ON entry (slot, entry_index);
 CREATE INDEX index_entry_slot ON entry (slot);
 
-CREATE TABLE IF NOT EXISTS untrusted_entry
-(
-    id           bigserial PRIMARY KEY,
-    slot         BIGINT    NOT NULL,
-    parent_slot  BIGINT    NOT NULL,
-    entry_index  BIGINT    NOT NULL,
-    entry        BYTEA,
-    is_full_slot BOOL      NOT NULL,
-    updated_on   TIMESTAMP NOT NULL
-);
-
-CREATE INDEX index_untrusted_entry_slot_entry_index ON untrusted_entry (slot, entry_index);
-CREATE INDEX index_untrusted_entry_slot ON untrusted_entry (slot);
-CREATE INDEX index_untrusted_entry_parent_slot ON untrusted_entry (parent_slot);
 
 /**
  * The following is for keeping historical data for accounts and is not required for plugin to work.

@@ -6618,10 +6618,13 @@ dependencies = [
 name = "solana-geyser-plugin-postgres"
 version = "1.18.15"
 dependencies = [
+ "blake3",
  "bs58",
  "bytemuck",
+ "byteorder",
  "chrono",
  "crossbeam-channel",
+ "hex",
  "libc",
  "libloading 0.7.4",
  "log",
@@ -6629,6 +6632,7 @@ dependencies = [
  "postgres",
  "postgres-openssl",
  "postgres-types",
+ "rocksdb",
  "serde",
  "serde_derive",
  "serde_json",
@@ -6644,8 +6648,10 @@ dependencies = [
  "solana-net-utils",
  "solana-runtime",
  "solana-sdk",
+ "solana-smt",
  "solana-streamer",
  "solana-transaction-status",
+ "sparse-merkle-tree 0.6.2 (git+https://github.com/MultiAdaptive/sparse-merkle-tree.git)",
  "tempfile",
  "thiserror",
  "tokio-postgres",

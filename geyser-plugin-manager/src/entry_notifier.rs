@@ -26,6 +26,7 @@ impl EntryNotifier for EntryNotifierImpl {
         starting_transaction_index: usize,
     ) {
         let mut measure = Measure::start("geyser-plugin-notify_plugins_of_entry_info");
+
         let mut plugin_manager = self.plugin_manager.write().unwrap();
         if plugin_manager.plugins.is_empty() {
             return;

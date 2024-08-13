@@ -55,6 +55,7 @@ use {
     tempfile::TempDir,
 };
 
+
 const RUST_LOG_FILTER: &str =
     "info,solana_core::replay_stage=warn,solana_local_cluster=info,local_cluster=info,solana_ledger=info";
 
@@ -273,7 +274,7 @@ fn test_postgres_plugin() {
             .as_ref()
             .unwrap()[0],
     )
-    .unwrap();
+        .unwrap();
     let mut contents = String::new();
     file.read_to_string(&mut contents).unwrap();
     let plugin_config: GeyserPluginPostgresConfig = serde_json::from_str(&contents).unwrap();

@@ -2,6 +2,7 @@
 /// in the plugin framework.
 use {log::*, solana_sdk::pubkey::Pubkey, std::collections::HashSet};
 
+
 pub(crate) struct TransactionSelector {
     pub mentioned_addresses: HashSet<Vec<u8>>,
     pub select_all_transactions: bool,
@@ -63,7 +64,7 @@ impl TransactionSelector {
     pub fn is_transaction_selected(
         &self,
         is_vote: bool,
-        mentioned_addresses: Box<dyn Iterator<Item = &Pubkey> + '_>,
+        mentioned_addresses: Box<dyn Iterator<Item=&Pubkey> + '_>,
     ) -> bool {
         if !self.is_enabled() {
             return false;

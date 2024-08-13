@@ -27,6 +27,7 @@ use {
     std::sync::atomic::Ordering,
 };
 
+
 const MAX_TRANSACTION_STATUS_LEN: usize = 256;
 
 #[derive(Clone, Debug, FromSql, ToSql)]
@@ -1393,7 +1394,7 @@ pub(crate) mod tests {
             Some(true),
             SimpleAddressLoader::Disabled,
         )
-        .unwrap();
+            .unwrap();
 
         let transaction_status_meta = build_transaction_status_meta();
         let transaction_info = ReplicaTransactionInfoV2 {
@@ -1438,7 +1439,7 @@ pub(crate) mod tests {
                 readonly: vec![Pubkey::new_unique(), Pubkey::new_unique()],
             }),
         )
-        .unwrap();
+            .unwrap();
 
         let transaction_status_meta = build_transaction_status_meta();
         let transaction_info = ReplicaTransactionInfoV2 {
