@@ -1,0 +1,7 @@
+{
+  "host": "localhost",
+  "user": "solana",
+  "password": "1234",
+  "dbname": "solana",
+  "port": 5432
+}

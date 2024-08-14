@@ -42,10 +42,10 @@ impl ExecuteService {
 
         let one = create_one(config.to_owned());
 
-        let account_dir = Path::new("./rocks-smt/account");
+        let account_dir = Path::new("./fp-smt/account");
         let account_db = DB::open_default(account_dir).unwrap();
         let rocksdb_store = RocksStore::new(account_db);
-        let slot_dir = Path::new("./rocks-smt/slot");
+        let slot_dir = Path::new("./fp-smt/slot");
         let slot_db = DB::open_default(slot_dir).unwrap();
         let rocksdb = Arc::new(RwLock::new(slot_db));
         let database_store_account_sparse_merkle_tree = DatabaseStoreAccountSMT::new_with_store(rocksdb_store).unwrap();
@@ -213,7 +213,7 @@ impl ExecuteService {
             let account_audits = slot_to_account_audits.get(&slot.clone()).unwrap();
             let mut ha = Hash::default();
             for r in transactions.clone() {
-                let msg = r.legacy_message;
+                let msg = r.legacy_message.unwrap();
                 let signatures = r.signatures;
                 let pks: Vec<Pubkey> = msg.account_keys.iter().map(|ak| Pubkey::try_from(ak.as_slice()).unwrap()).collect();
 

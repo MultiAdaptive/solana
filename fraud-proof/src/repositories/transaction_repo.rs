@@ -11,14 +11,16 @@ impl<'a> TransactionRepo<'a> {
         let conn = &mut self.one;
 
         let tx_stmt =
-            "SELECT slot, legacy_message, signatures FROM transaction WHERE slot >= $1 AND slot <= $2 ORDER BY slot ASC, write_version ASC";
+            "SELECT slot, message_type, legacy_message, v0_loaded_message, signatures FROM transaction WHERE slot >= $1 AND slot <= $2 ORDER BY slot ASC, write_version ASC";
         let tx_results = conn.query(tx_stmt, &[&from_slot, &to_slot]).unwrap();
 
         let rows = tx_results.into_iter().map(|r| {
             TransactionRow {
                 slot: r.get(0),
-                legacy_message: r.get(1),
-                signatures: r.get(2),
+                message_type: r.get(1),
+                legacy_message: r.get(2),
+                v0_loaded_message: r.get(3),
+                signatures: r.get(4),
             }
         }).collect();
 
@@ -30,14 +32,16 @@ impl<'a> TransactionRepo<'a> {
         let conn = &mut self.one;
 
         let tx_stmt =
-            "SELECT slot, legacy_message, signatures FROM transaction WHERE slot = $1 ORDER BY write_version ASC";
+            "SELECT slot, message_type, legacy_message, v0_loaded_message, signatures FROM transaction WHERE slot = $1 ORDER BY write_version ASC";
         let tx_results = conn.query(tx_stmt, &[&slot]).unwrap();
 
         let rows = tx_results.into_iter().map(|r| {
             TransactionRow {
                 slot: r.get(0),
-                legacy_message: r.get(1),
-                signatures: r.get(2),
+                message_type: r.get(1),
+                legacy_message: r.get(2),
+                v0_loaded_message: r.get(3),
+                signatures: r.get(4),
             }
         }).collect();
 
