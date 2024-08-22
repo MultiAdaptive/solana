@@ -49,7 +49,6 @@ use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
 mod postgres_client_account_index;
 mod postgres_client_block_metadata;
 mod postgres_client_transaction;
-mod postgres_client_account_smt;
 mod postgres_client_entry;
 
 /// The maximum asynchronous requests allowed in the channel to avoid excessive
@@ -78,7 +77,6 @@ struct PostgresSqlClientWrapper {
     bulk_insert_token_owner_index_stmt: Option<Statement>,
     bulk_insert_token_mint_index_stmt: Option<Statement>,
     update_entry_stmt: Statement,
-    update_smt_tree_stmt: Statement,
 }
 
 pub struct SimplePostgresClient {
@@ -888,7 +886,6 @@ impl SimplePostgresClient {
         let update_block_metadata_stmt =
             Self::build_block_metadata_upsert_statement(&mut client, config)?;
         let update_entry_stmt = Self::build_entry_upsert_statement(&mut client, config)?;
-        let update_smt_tree_stmt = Self::build_smt_tree_upsert_statement(&mut client, config)?;
 
         let batch_size = config
             .batch_size
@@ -963,7 +960,6 @@ impl SimplePostgresClient {
                 bulk_insert_token_owner_index_stmt,
                 bulk_insert_token_mint_index_stmt,
                 update_entry_stmt,
-                update_smt_tree_stmt,
             }),
             index_token_owner: config.index_token_owner.unwrap_or_default(),
             index_token_mint: config.index_token_mint.unwrap_or(false),
