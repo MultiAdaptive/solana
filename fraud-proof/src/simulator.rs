@@ -1,6 +1,4 @@
 use std::str::FromStr;
-use std::sync::{Arc, Mutex};
-use std::thread;
 use std::time::Duration;
 
 use log::{error, info};
@@ -114,15 +112,15 @@ impl Simulator {
         let mut is_success: bool = true;
 
         let execute_service = self.execute_service.as_mut().unwrap();
-        let chain_service = Arc::new(Mutex::new(self.chain_service.take().unwrap()));
+        let chain_service = self.chain_service.as_mut().unwrap();
 
-        is_success = chain_service.lock().unwrap().create_state_account();
+        is_success = chain_service.create_state_account();
         if !is_success {
             error!("create state account fail.");
             return is_success.clone();
         }
 
-        is_success = chain_service.lock().unwrap().create_tally_account();
+        is_success = chain_service.create_tally_account();
         if !is_success {
             error!("create tally account fail.");
             return is_success.clone();
@@ -143,26 +141,15 @@ impl Simulator {
             let start_slot = std::cmp::max(last_slot + 1, initial_slot);
             let end_slot = max_slot - 1;
             let briefs: Vec<ChainBrief> = execute_service.generate_briefs(start_slot.clone(), end_slot.clone()).unwrap();
-            let mut handles = vec![];
 
             // send brief to chain
             // The slot 0 and slot 1 are initial of blockchain, we never challenge, so skip them.
             for brief in briefs {
                 info!("brief: {:?}", brief);
-                let chain_service = Arc::clone(&chain_service);
-                let handle = thread::spawn(move || {
-                    let is_success = chain_service.lock().unwrap().create_brief_account(brief.clone());
-                    if !is_success {
-                        error!("create brief account fail. slot: {:?}", brief);
-                    }
-                    is_success
-                });
-                handles.push(handle);
-            }
-
-            for handle in handles {
-                if !handle.join().unwrap() {
-                    is_success = false;
+                is_success = chain_service.create_brief_account(brief.clone());
+                if !is_success {
+                    error!("create brief account fail. slot: {:?}", brief.clone());
+                    continue;
                 }
             }
         }
